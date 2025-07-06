@@ -2,7 +2,7 @@ import axiosInstance from "./api";
 
 export const accountService = {
   // Test get accounts
-  testGetAccounts: async () => {
+  getAllAccounts: async () => {
     try {
       const response = await axiosInstance.get("/accounts");
       return response.data;
