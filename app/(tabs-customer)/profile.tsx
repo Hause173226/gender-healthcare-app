@@ -1,91 +1,121 @@
-import React from 'react';
-import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { User, Calendar, MessageCircle, FlaskConical, Settings, Bell, Shield, CircleHelp as HelpCircle, LogOut } from 'lucide-react-native';
+import React from "react";
+import {
+  View,
+  Text,
+  SafeAreaView,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import {
+  User,
+  Calendar,
+  MessageCircle,
+  FlaskConical,
+  Settings,
+  Bell,
+  Shield,
+  CircleHelp as HelpCircle,
+  LogOut,
+} from "lucide-react-native";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function ProfileScreen() {
   const router = useRouter();
-  
+  const { user, logout } = useAuth();
+
   const profileStats = [
     {
-      title: 'Consultations',
-      value: '12',
+      title: "Consultations",
+      value: "12",
       icon: MessageCircle,
-      color: '#F8BBD9',
+      color: "#F8BBD9",
     },
     {
-      title: 'Tests Taken',
-      value: '8',
+      title: "Tests Taken",
+      value: "8",
       icon: FlaskConical,
-      color: '#B2DFDB',
+      color: "#B2DFDB",
     },
     {
-      title: 'Cycle Days',
-      value: '180',
+      title: "Cycle Days",
+      value: "180",
       icon: Calendar,
-      color: '#E1F5FE',
+      color: "#E1F5FE",
     },
   ];
 
   const menuItems = [
     {
-      title: 'Personal Information',
+      title: "Personal Information",
       icon: User,
-      action: () => router.push('/(tabs-customer)/edit-profile'),
+      action: () => router.push("/(tabs-customer)/edit-profile"),
     },
     {
-      title: 'Consultation History',
+      title: "Consultation History",
       icon: MessageCircle,
-      action: () => router.push('/(tabs-customer)/consultation-history'),
+      action: () => router.push("/(tabs-customer)/consultation-history"),
     },
     {
-      title: 'Test Results',
+      title: "Test Results",
       icon: FlaskConical,
-      action: () => router.push('/(tabs-customer)/test-results'),
+      action: () => router.push("/(tabs-customer)/test-results"),
     },
     {
-      title: 'Notifications',
+      title: "Notifications",
       icon: Bell,
-      action: () => router.push('/(tabs-customer)/notifications'),
+      action: () => router.push("/(tabs-customer)/notifications"),
     },
     {
-      title: 'Privacy & Security',
+      title: "Privacy & Security",
       icon: Shield,
-      action: () => router.push('/(tabs-customer)/privacy-security'),
+      action: () => router.push("/(tabs-customer)/privacy-security"),
     },
     {
-      title: 'Settings',
+      title: "Settings",
       icon: Settings,
-      action: () => router.push('/(tabs-customer)/settings'),
+      action: () => router.push("/(tabs-customer)/settings"),
     },
     {
-      title: 'Help & Support',
+      title: "Help & Support",
       icon: HelpCircle,
-      action: () => router.push('/(tabs-customer)/help-support'),
+      action: () => router.push("/(tabs-customer)/help-support"),
     },
   ];
 
   const handleSignOut = () => {
-    Alert.alert(
-      'Đăng xuất',
-      'Bạn có chắc chắn muốn đăng xuất không?',
-      [
-        {
-          text: 'Hủy',
-          style: 'cancel',
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await logout();
+            router.replace("/(auth)/login");
+          } catch (error) {
+            console.error("Logout error:", error);
+          }
         },
-        {
-          text: 'Đăng xuất',
-          style: 'destructive',
-          onPress: () => {
-            // Clear any stored user data here if needed
-            router.replace('/(auth)/login');
-          },
-        },
-      ]
-    );
+      },
+    ]);
+  };
+
+  // Get user initials for avatar
+  const getUserInitials = (name?: string) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   return (
@@ -95,19 +125,21 @@ export default function ProfileScreen() {
         <View className="px-6 pt-6 pb-4">
           <Card className="items-center py-6">
             <View className="w-20 h-20 bg-healthcare-primary rounded-full items-center justify-center mb-4">
-              <Text className="text-white text-2xl font-bold">SW</Text>
+              <Text className="text-white text-2xl font-bold">
+                {getUserInitials(user?.name)}
+              </Text>
             </View>
             <Text className="text-xl font-bold text-healthcare-text">
-              Sarah Wilson
+              {user?.name || "User Name"}
             </Text>
             <Text className="text-healthcare-text/70 mb-4">
-              sarah.wilson@email.com
+              {user?.email || "user@email.com"}
             </Text>
-            <Button 
-              title="Edit Profile" 
-              variant="outline" 
-              size="small" 
-              onPress={() => router.push('/(tabs-customer)/edit-profile')}
+            <Button
+              title="Edit Profile"
+              variant="outline"
+              size="small"
+              onPress={() => router.push("/(tabs-customer)/edit-profile")}
             />
           </Card>
         </View>
@@ -142,7 +174,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 key={index}
                 className={`flex-row items-center px-4 py-4 ${
-                  index < menuItems.length - 1 ? 'border-b border-gray-100' : ''
+                  index < menuItems.length - 1 ? "border-b border-gray-100" : ""
                 }`}
                 onPress={item.action}
               >
@@ -173,7 +205,7 @@ export default function ProfileScreen() {
                 </Text>
               </View>
             </Card>
-            
+
             <Card className="flex-row items-center py-3">
               <FlaskConical size={20} color="#B2DFDB" />
               <View className="ml-3 flex-1">
@@ -190,7 +222,7 @@ export default function ProfileScreen() {
 
         {/* Logout */}
         <View className="px-6 pb-6">
-          <TouchableOpacity 
+          <TouchableOpacity
             className="flex-row items-center justify-center py-4 border border-healthcare-danger rounded-lg"
             onPress={handleSignOut}
           >

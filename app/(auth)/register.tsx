@@ -1,92 +1,165 @@
-import React, { useState } from 'react';
-import { View, Text, SafeAreaView, TouchableOpacity } from 'react-native';
-import { router } from 'expo-router';
-import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { Mail, Lock, User } from 'lucide-react-native';
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  SafeAreaView,
+  TouchableOpacity,
+  ScrollView,
+  TouchableWithoutFeedback,
+  Keyboard,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { useToast } from "@/hooks/useToast";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Mail, Lock, User, Phone } from "lucide-react-native";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function RegisterScreen() {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const router = useRouter();
+  const { register } = useAuth();
+  const toast = useToast();
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
+    gender: "Female" as "Male" | "Female" | "Other",
+  });
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
+    if (!formData.name || !formData.email || !formData.password) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      toast.error("Password must be at least 6 characters long");
+      return;
+    }
+
     setLoading(true);
-    // Simulate registration
-    setTimeout(() => {
+
+    try {
+      await register({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
+        gender: formData.gender,
+        role: "Customer",
+      });
+
+      router.replace("/(auth)/login");
+    } catch (error) {
+      // Error is already handled in AuthContext
+    } finally {
       setLoading(false);
-      router.replace('/(auth)/role-selection');
-    }, 1500);
+    }
+  };
+
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-healthcare-light">
-      <View className="flex-1 justify-center px-6">
-        <Text className="text-3xl font-bold text-healthcare-text text-center mb-2">
-          Create Account
-        </Text>
-        <Text className="text-lg text-healthcare-primary text-center mb-12">
-          Join our healthcare community
-        </Text>
+    <TouchableWithoutFeedback onPress={dismissKeyboard}>
+      <SafeAreaView className="flex-1 bg-healthcare-light">
+        <ScrollView className="flex-1 px-6">
+          <View className="py-8">
+            <Text className="text-3xl font-bold text-healthcare-text text-center mb-2">
+              Create Account
+            </Text>
+            <Text className="text-lg text-healthcare-primary text-center mb-6">
+              Join our healthcare community
+            </Text>
 
-        <Card className="mb-8">
-          <Input
-            label="Full Name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Enter your full name"
-            leftIcon={<User size={20} color="#A0AEC0" />}
-          />
+            <Card className="mb-8">
+              <Input
+                label="Full Name *"
+                value={formData.name}
+                onChangeText={(value) =>
+                  setFormData({ ...formData, name: value })
+                }
+                placeholder="Enter your full name"
+                leftIcon={<User size={20} color="#A0AEC0" />}
+              />
 
-          <Input
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Enter your email"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            leftIcon={<Mail size={20} color="#A0AEC0" />}
-          />
+              <Input
+                label="Email *"
+                value={formData.email}
+                onChangeText={(value) =>
+                  setFormData({ ...formData, email: value })
+                }
+                placeholder="Enter your email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                leftIcon={<Mail size={20} color="#A0AEC0" />}
+              />
 
-          <Input
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Create a password"
-            secureTextEntry
-            leftIcon={<Lock size={20} color="#A0AEC0" />}
-          />
+              <Input
+                label="Phone Number"
+                value={formData.phone}
+                onChangeText={(value) =>
+                  setFormData({ ...formData, phone: value })
+                }
+                placeholder="Enter your phone number"
+                keyboardType="phone-pad"
+                leftIcon={<Phone size={20} color="#A0AEC0" />}
+              />
 
-          <Input
-            label="Confirm Password"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            placeholder="Confirm your password"
-            secureTextEntry
-            leftIcon={<Lock size={20} color="#A0AEC0" />}
-          />
+              <Input
+                label="Password *"
+                value={formData.password}
+                onChangeText={(value) =>
+                  setFormData({ ...formData, password: value })
+                }
+                placeholder="Enter your password"
+                secureTextEntry
+                leftIcon={<Lock size={20} color="#A0AEC0" />}
+              />
 
-          <Button
-            title="Create Account"
-            onPress={handleRegister}
-            loading={loading}
-            size="large"
-          />
-        </Card>
+              <Input
+                label="Confirm Password *"
+                value={formData.confirmPassword}
+                onChangeText={(value) =>
+                  setFormData({ ...formData, confirmPassword: value })
+                }
+                placeholder="Confirm your password"
+                secureTextEntry
+                leftIcon={<Lock size={20} color="#A0AEC0" />}
+              />
 
-        <TouchableOpacity 
-          className="mt-8"
-          onPress={() => router.push('/(auth)/login')}
-        >
-          <Text className="text-healthcare-text text-center">
-            Already have an account?{' '}
-            <Text className="text-healthcare-primary font-semibold">Sign In</Text>
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+              <Button
+                title="Create Account"
+                onPress={handleRegister}
+                loading={loading}
+                size="large"
+              />
+            </Card>
+
+            <TouchableOpacity
+              className="mt-8"
+              onPress={() => router.push("/(auth)/login")}
+            >
+              <Text className="text-healthcare-text text-center">
+                Already have an account?{" "}
+                <Text className="text-healthcare-primary font-semibold">
+                  Sign In
+                </Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 }
