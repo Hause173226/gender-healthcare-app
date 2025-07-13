@@ -25,7 +25,7 @@ export default function CustomerHomeScreen() {
       title: 'Book Test',
       icon: FlaskConical,
       color: '#B2DFDB',
-      action: () => router.push('/(tabs-customer)/tests'),
+      action: () => router.push('/(tabs-customer)/consultations'),
     },
     {
       title: 'Health Tips',

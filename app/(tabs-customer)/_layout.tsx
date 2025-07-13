@@ -54,13 +54,25 @@ export default function CustomerTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="tests"
+        name="consultations"
         options={{
-          title: 'Tests',
+          title: 'Consult',
           tabBarIcon: ({ size, color }) => (
-            <FlaskConical size={size} color={color} />
+            <Calendar size={size} color={color} />
           ),
         }}
+      />
+      <Tabs.Screen
+        name="consultation-payment"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="booking-detail"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="rating"
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="profile"
@@ -71,7 +83,7 @@ export default function CustomerTabsLayout() {
           ),
         }}
       />
-      
+
       {/* Hidden screens - not shown in tab bar */}
       <Tabs.Screen
         name="create-cycle"
