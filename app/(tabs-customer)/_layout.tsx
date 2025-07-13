@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Chrome as Home, Calendar, MessageCircle, FlaskConical, User } from 'lucide-react-native';
+import { Chrome as Home, Calendar, MessageCircle, FlaskConical, User, Users } from 'lucide-react-native';
 
 export default function CustomerTabsLayout() {
   return (
@@ -35,12 +35,21 @@ export default function CustomerTabsLayout() {
           ),
         }}
       />
-      <Tabs.Screen
+      {/* <Tabs.Screen
         name="chat"
         options={{
           title: 'Chat',
           tabBarIcon: ({ size, color }) => (
             <MessageCircle size={size} color={color} />
+          ),
+        }}
+      /> */}
+      <Tabs.Screen
+        name="forum"
+        options={{
+          title: 'Forum',
+          tabBarIcon: ({ size, color }) => (
+            <Users size={size} color={color} />
           ),
         }}
       />
