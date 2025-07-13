@@ -1,10 +1,18 @@
-import React from 'react';
-import { View, Text, Alert, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  Alert,
+  TouchableOpacity,
+  ActivityIndicator,
+  ScrollView,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { consultationScheduleService } from '@/services/consultationScheduleService';
 import { consultationBookingService, BookingStatus } from '@/services/consultationBookingService';
-
+import { ArrowLeft } from 'lucide-react-native';
 import dayjs from 'dayjs';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ConsultationPaymentScreen() {
   const {
@@ -19,53 +27,99 @@ export default function ConsultationPaymentScreen() {
   } = useLocalSearchParams();
 
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
   const handlePayment = async () => {
-    try {
-      if (!scheduleId || !customerId || !date || !startTime) {
-        Alert.alert('❌ Thiếu thông tin', 'Không đủ dữ liệu để thanh toán.');
-        return;
-      }
+    if (!scheduleId || !customerId || !date || !startTime) {
+      Alert.alert('❌ Missing Information', 'Insufficient data to proceed with payment.');
+      return;
+    }
 
+    setLoading(true);
+    try {
       const bookingPayload = {
         customerId: customerId as string,
         scheduleId: scheduleId as string,
         bookingDate: dayjs(`${date}T${startTime}`).toDate(),
-status: 'confirmed' as BookingStatus,
+        status: 'confirmed' as BookingStatus,
       };
 
-      const newBooking = await consultationBookingService.createBooking(bookingPayload);
+      await consultationBookingService.createBooking(bookingPayload);
       await consultationScheduleService.updateSchedule(scheduleId as string, {
         status: 'booked',
       });
 
-      Alert.alert('✅ Thành công', 'Thanh toán và đặt lịch thành công!');
-      router.replace('/(tabs-customer)/consultation-history');
+      router.replace('/(tabs-customer)/consultation-success');
     } catch (err: any) {
-      console.error('❌ Lỗi khi thanh toán:', err?.response?.data || err.message);
-      Alert.alert('❌ Lỗi', 'Không thể hoàn tất thanh toán.');
+      Alert.alert('❌ Error', err?.response?.data?.message || 'Could not complete payment.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <View className="flex-1 p-4 bg-white justify-center">
-      <Text className="text-xl font-bold text-center mb-4">Xác nhận thanh toán</Text>
-
-      <View className="bg-gray-100 rounded-lg p-4 mb-6">
-        <Text className="text-base mb-2">👤 Tư vấn viên: <Text className="font-semibold">{doctorName}</Text></Text>
-        <Text className="text-base mb-2">📅 Ngày: <Text className="font-semibold">{date}</Text></Text>
-        <Text className="text-base mb-2">⏰ Khung giờ: <Text className="font-semibold">{slotTime}</Text></Text>
-        <Text className="text-base mb-2">💵 Giá: <Text className="font-semibold">{price}.000 VND</Text></Text>
+    <SafeAreaView className="flex-1 bg-white">
+      {/* Header */}
+      <View className="flex-row items-center px-4 py-3 border-b border-gray-200">
+        <TouchableOpacity
+          onPress={() => router.replace('/(tabs-customer)/consultations')}
+          className="pr-4"
+        >
+          <ArrowLeft size={24} color="#ec4899" />
+        </TouchableOpacity>
+        <Text className="text-lg font-bold text-pink-600">Payment Confirmation</Text>
       </View>
 
-      <TouchableOpacity
-        className="bg-blue-600 py-3 rounded-lg"
-        onPress={handlePayment}
-      >
-        <Text className="text-white text-center text-lg font-medium">
-          Thanh toán {price}.000 VND
-        </Text>
-      </TouchableOpacity>
-    </View>
+      {/* Nội dung */}
+      <ScrollView contentContainerStyle={{ padding: 16, flexGrow: 1 }}>
+        <View className="flex-1 justify-center">
+          {/* Thông tin thanh toán */}
+          <View className="bg-pink-50 border border-pink-200 rounded-xl p-4 mb-6 ">
+            <Text className="text-lg font-bold text-pink-700 mb-4 text-center">
+              Consultation with {doctorName}
+            </Text>
+
+            <View className="mb-2">
+              <Text className="text-gray-500 text-sm">Transaction ID</Text>
+              <Text className="text-base font-medium ">{scheduleId}</Text>
+            </View>
+
+            <View className="mb-2 ">
+              <Text className="text-gray-500 text-sm">Date</Text>
+              <Text className="text-base font-medium">
+                {dayjs(date as string).format('DD/MM/YYYY')}
+              </Text>
+            </View>
+
+            <View className="mb-2 ">
+              <Text className="text-gray-500 text-sm">Time Slot</Text>
+              <Text className="text-base font-medium">{slotTime}</Text>
+            </View>
+
+            <View className="border-t border-dashed border-gray-300 my-4 w-full" />
+
+            <View className="">
+              <Text className="text-gray-500">Total</Text>
+              <Text className="text-3xl font-bold text-pink-600">{price}.000 VND</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Nút thanh toán ở cuối trang */}
+        <TouchableOpacity
+          disabled={loading}
+          className={`py-4 rounded-lg ${loading ? 'bg-pink-300' : 'bg-pink-600'}`}
+          onPress={handlePayment}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text className="text-white text-center text-lg font-bold">
+              Pay {price}.000 VND
+            </Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
