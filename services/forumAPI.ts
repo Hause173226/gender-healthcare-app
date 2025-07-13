@@ -7,7 +7,7 @@ export type ForumPost = {
   content: string;
   category: string;
   tags: string[];
-  accountId: string | { _id?: string; name?: string; role?: string; isVerified?: boolean };
+  accountId: string | { _id?: string; name?: string;image?:string; role?: string; isVerified?: boolean };
   voteUp: string[];
   voteDown: string[];
   viewCount: number;
@@ -182,6 +182,189 @@ const forumAPI = {
       throw error;
     }
   },
+  
+  // User-specific post APIs
+  getFollowedPosts: async (accountId: string, page = 1, limit = 10) => {
+    try {
+      const response = await axiosInstance.get('/posts', { 
+        params: { accountId, page, limit, type: 'following' } 
+      });
+      return response;
+    } catch (error) {
+      console.error('Error fetching followed posts:', error);
+      throw error;
+    }
+  },
+  
+  getUserPosts: async (accountId: string, page = 1, limit = 10) => {
+    try {
+      const response = await axiosInstance.get('/posts', { 
+        params: { accountId, page, limit, type: 'myPosts' } 
+      });
+      return response;
+    } catch (error) {
+      console.error('Error fetching user posts:', error);
+      throw error;
+    }
+  },
+  
+  followPost: async (postId: string, accountId: string) => {
+    try {
+      const response = await axiosInstance.post(`/posts/${postId}/follow`, { accountId });
+      return response;
+    } catch (error) {
+      console.error('Error following post:', error);
+      throw error;
+    }
+  },
+  
+  unfollowPost: async (postId: string, accountId: string) => {
+    try {
+      const response = await axiosInstance.post(`/posts/${postId}/unfollow`, { accountId });
+      return response;
+    } catch (error) {
+      console.error('Error unfollowing post:', error);
+      throw error;
+    }
+  },
+  
+  updatePost: async (id: string, data: any) => {
+  try {
+    const response = await axiosInstance.put(`/posts/${id}`, data);
+    return response;
+  } catch (error) {
+    console.error('Error updating post:', error);
+    throw error;
+  }
+},
+
+deletePost: async (id: string) => {
+  try {
+    const response = await axiosInstance.delete(`/posts/${id}`);
+    return response;
+  } catch (error) {
+    console.error('Error deleting post:', error);
+    throw error;
+  }
+},
+
+// Moderation APIs
+getPendingPosts: async (page = 1, limit = 10) => {
+  try {
+    const response = await axiosInstance.get('/moderation/posts/pending', { params: { page, limit } });
+    return response;
+  } catch (error) {
+    console.error('Error getting pending posts:', error);
+    throw error;
+  }
+},
+
+getPostsByStatus: async (status: string, page = 1, limit = 10) => {
+  try {
+    const response = await axiosInstance.get(`/moderation/posts/${status}`, { params: { page, limit } });
+    return response;
+  } catch (error) {
+    console.error('Error getting posts by status:', error);
+    throw error;
+  }
+},
+
+approvePost: async (postId: string) => {
+  try {
+    const response = await axiosInstance.post(`/moderation/posts/${postId}/approve`);
+    return response;
+  } catch (error) {
+    console.error('Error approving post:', error);
+    throw error;
+  }
+},
+
+rejectPost: async (postId: string, reason: string) => {
+  try {
+    const response = await axiosInstance.post(`/moderation/posts/${postId}/reject`, { reason });
+    return response;
+  } catch (error) {
+    console.error('Error rejecting post:', error);
+    throw error;
+  }
+},
+
+flagPost: async (postId: string, reason: string) => {
+  try {
+    const response = await axiosInstance.post(`/moderation/posts/${postId}/flag`, { reason });
+    return response;
+  } catch (error) {
+    console.error('Error flagging post:', error);
+    throw error;
+  }
+},
+
+getPendingComments: async (page = 1, limit = 10) => {
+  try {
+    const response = await axiosInstance.get('/moderation/comments/pending', { params: { page, limit } });
+    return response;
+  } catch (error) {
+    console.error('Error getting pending comments:', error);
+    throw error;
+  }
+},
+
+getCommentsByStatus: async (status: string, page = 1, limit = 10) => {
+  try {
+    const response = await axiosInstance.get(`/moderation/comments/${status}`, { params: { page, limit } });
+    return response;
+  } catch (error) {
+    console.error('Error getting comments by status:', error);
+    throw error;
+  }
+},
+
+approveComment: async (commentId: string) => {
+  try {
+    const response = await axiosInstance.post(`/moderation/comments/${commentId}/approve`);
+    return response;
+  } catch (error) {
+    console.error('Error approving comment:', error);
+    throw error;
+  }
+},
+
+rejectComment: async (commentId: string, reason: string) => {
+  try {
+    const response = await axiosInstance.post(`/moderation/comments/${commentId}/reject`, { reason });
+    return response;
+  } catch (error) {
+    console.error('Error rejecting comment:', error);
+    throw error;
+  }
+},
+
+flagComment: async (commentId: string, reason: string) => {
+  try {
+    const response = await axiosInstance.post(`/moderation/comments/${commentId}/flag`, { reason });
+    return response;
+  } catch (error) {
+    console.error('Error flagging comment:', error);
+    throw error;
+  }
+},
+
+getModerationStats: async () => {
+  try {
+    const response = await axiosInstance.get('/moderation/stats');
+    return response;
+  } catch (error) {
+    console.error('Error getting moderation stats:', error);
+    throw error;
+  }
+},
+
+getSortOptions: () => [
+  { value: "newest", label: "Newest" },
+  { value: "popular", label: "Most Popular" },
+  { value: "votes", label: "Most Votes" },
+],
+
   
   // Utilities
   getCategories: () => [

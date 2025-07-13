@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Modal, 
   View, 
@@ -36,14 +36,16 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Get categories from API
+  // Get categories and tags from the API
   const categories = forumAPI.getCategories();
   const suggestedTags = forumAPI.getSuggestedTags();
 
   const handleAddTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim().toLowerCase())) {
+    if (tagInput.trim() && !tags.includes(tagInput.trim().toLowerCase()) && tags.length < 5) {
       setTags([...tags, tagInput.trim().toLowerCase()]);
       setTagInput('');
+    } else if (tags.length >= 5) {
+      Alert.alert('Limit Reached', 'You can only add up to 5 tags per post');
     }
   };
 
@@ -52,8 +54,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   };
 
   const handleSelectSuggestedTag = (tag: string) => {
-    if (!tags.includes(tag)) {
+    if (!tags.includes(tag) && tags.length < 5) {
       setTags([...tags, tag]);
+    } else if (tags.length >= 5) {
+      Alert.alert('Limit Reached', 'You can only add up to 5 tags per post');
     }
   };
 
@@ -70,6 +74,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       Alert.alert('Error', 'Please select a category for your post');
       return false;
     }
+    if (title.trim().length < 5) {
+      Alert.alert('Error', 'Title must be at least 5 characters long');
+      return false;
+    }
+    if (content.trim().length < 10) {
+      Alert.alert('Error', 'Content must be at least 10 characters long');
+      return false;
+    }
     return true;
   };
 
@@ -79,23 +91,77 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setIsSubmitting(true);
     
     try {
-      const userId = await AsyncStorage.getItem('UserId');
+      // Check if token exists first
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        Alert.alert('Error', 'Authentication token not found. Please log in again.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Get the user object from AsyncStorage based on the Account interface
+      const userString = await AsyncStorage.getItem('user');
+      let userId;
+      
+      if (userString) {
+        try {
+          const userObj = JSON.parse(userString);
+          
+          // Log user object for debugging
+          console.log("User object retrieved:", userObj);
+          
+          // Based on the Account interface, user has _id field
+          userId = userObj._id;
+          
+          if (!userId) {
+            console.warn("User object doesn't contain _id field:", userObj);
+            if (userObj.id) {
+              userId = userObj.id;
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing user data:", e);
+          userId = userString; // Fall back to using the string directly as last resort
+        }
+      }
+      
+      // Try alternative keys if user ID is still not found
+      if (!userId) {
+        userId = await AsyncStorage.getItem('userId');
+      }
       
       if (!userId) {
-        Alert.alert('Error', 'You must be logged in to create a post');
+        userId = await AsyncStorage.getItem('accountId');
+      }
+      
+      if (!userId) {
+        Alert.alert('Error', 'User ID not found. Please log in again.');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      console.log("Creating post with userId:", userId);
+      
+      // Make sure we have valid data
+      if (!category) {
+        Alert.alert('Error', 'Please select a category');
+        setIsSubmitting(false);
         return;
       }
       
       const postData = {
-        title,
-        content,
+        title: title.trim(),
+        content: content.trim(),
         category,
-        tags,
+        tags: tags.length > 0 ? tags : [], // Ensure tags is always an array
         accountId: userId,
-        isAnonymous
+        isAnonymous: isAnonymous || false
       };
       
-      await forumAPI.createPost(postData);
+      console.log("Sending post data:", JSON.stringify(postData));
+      
+      const response = await forumAPI.createPost(postData);
+      console.log("Post created successfully:", response.data);
       
       // Clear form
       setTitle('');
@@ -110,13 +176,37 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       // Notify parent that post was created
       onPostCreated();
       
-      Alert.alert('Success', 'Your post has been created successfully');
+      Alert.alert('Success', 'Your post has been created successfully and is awaiting moderation.');
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating post:', error);
+      
+      // Extract more detailed error information if available
+      let errorMessage = 'An error occurred while creating your post. Please try again.';
+      
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        console.error('Error response data:', error.response.data);
+        console.error('Error response status:', error.response.status);
+        
+        if (error.response.status === 500) {
+          errorMessage = 'Server error. The post could not be created. This could be due to incorrect user ID or server configuration.';
+        } else if (error.response.data && error.response.data.message) {
+          errorMessage = error.response.data.message;
+        }
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error('Error request:', error.request);
+        errorMessage = 'No response received from server. Please check your internet connection.';
+      } else {
+        // Something happened in setting up the request
+        console.error('Error message:', error.message);
+        errorMessage = error.message || errorMessage;
+      }
+      
       Alert.alert(
         'Error', 
-        'Unable to create post. Please try again later.'
+        errorMessage
       );
     } finally {
       setIsSubmitting(false);
@@ -207,7 +297,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             
             {/* Tags Input */}
             <View className="mb-4">
-              <Text className="text-sm text-gray-600 mb-1">Tags (optional)</Text>
+              <Text className="text-sm text-gray-600 mb-1">Tags (optional, max 5)</Text>
               <View className="flex-row items-center mb-2">
                 <TextInput
                   className="flex-1 border border-gray-300 rounded-lg p-3 mr-2"
@@ -215,12 +305,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   value={tagInput}
                   onChangeText={setTagInput}
                   onSubmitEditing={handleAddTag}
+                  editable={tags.length < 5}
                 />
                 <TouchableOpacity
                   onPress={handleAddTag}
-                  className="bg-gray-200 p-3 rounded-lg"
+                  className={`p-3 rounded-lg ${tags.length >= 5 ? 'bg-gray-100' : 'bg-gray-200'}`}
+                  disabled={tags.length >= 5}
                 >
-                  <Plus size={20} color="#000" />
+                  <Plus size={20} color={tags.length >= 5 ? "#9ca3af" : "#000"} />
                 </TouchableOpacity>
               </View>
               
@@ -250,8 +342,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                       key={tag}
                       onPress={() => handleSelectSuggestedTag(tag)}
                       className="bg-gray-100 rounded-full px-3 py-1 mr-2 mb-2"
+                      disabled={tags.length >= 5}
                     >
-                      <Text className="text-gray-700">{tag}</Text>
+                      <Text className={`${tags.length >= 5 ? 'text-gray-400' : 'text-gray-700'}`}>{tag}</Text>
                     </TouchableOpacity>
                   )
                 ))}

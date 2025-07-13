@@ -77,9 +77,21 @@ export default function NewForumPostScreen() {
         isAnonymous
       };
       
-      await forumService.createPost(postData);
+      const response = await forumService.createPost(postData);
+      
+      // Lấy ID của bài đăng vừa tạo
+      const newPostId = response && response.data && response.data._id ? 
+        (typeof response.data._id === 'string' ? response.data._id : 
+          response.data._id.$oid || String(response.data._id)) : null;
+      
       Alert.alert('Thành công', 'Bài đăng đã được tạo thành công!', [
-        { text: 'OK', onPress: () => router.push('/(tabs-customer)/chat') }
+        { text: 'OK', onPress: () => {
+          // Chuyển hướng đến màn hình forum và truyền postId để hiển thị chi tiết
+          router.push({
+            pathname: '/(tabs-customer)/forum',
+            params: { postId: newPostId }
+          });
+        }}
       ]);
     } catch (error) {
       console.error('Error creating post:', error);
