@@ -15,12 +15,13 @@ export default function CustomerHomeScreen() {
       color: '#F8BBD9',
       action: () => router.push('/(tabs-customer)/cycle'),
     },
-    
+
     {
       title: 'Book Test',
       icon: FlaskConical,
       color: '#B2DFDB',
       action: () => router.push('/(tabs-customer)/consultations'),
+
     },
     {
       title: 'Forum',

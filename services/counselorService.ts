@@ -3,6 +3,7 @@ import axiosInstance from "./api";
 // Interface dựa trên schema Counselor
 export interface Counselor {
   _id: string;
+
   degree?: string;
   experience?: number;
   bio?: string;
@@ -16,10 +17,10 @@ export interface Counselor {
     createdAt: string;
     updatedAt: string;
   };
+
   createdAt: string;
   updatedAt: string;
 }
-
 
 export const counselorService = {
   // Lấy tất cả tư vấn viên

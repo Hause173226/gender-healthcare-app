@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+
 import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, Image, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Calendar, Star } from 'lucide-react-native';
@@ -9,11 +10,13 @@ import { Card } from '@/components/ui/Card';
 import dayjs from 'dayjs';
 import { useFocusEffect } from '@react-navigation/native';
 
+
 export default function ConsultationHistoryScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'all' | 'completed' | 'confirmed'>('all');
   const [bookings, setBookings] = useState<ConsultationBookingPopulated[]>([]);
+
   const [counselors, setCounselors] = useState<Counselor[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -53,6 +56,7 @@ export default function ConsultationHistoryScreen() {
     activeTab === 'all' ? true : b.status === activeTab
   );
 
+
   const renderStars = (rating?: number) => {
     if (!rating) return null;
     return (
@@ -62,6 +66,7 @@ export default function ConsultationHistoryScreen() {
             key={i}
             size={14}
             color="#FFB74D"
+
             fill={i < rating ? '#FFB74D' : 'none'}
             stroke="#FFB74D"
           />
@@ -74,8 +79,10 @@ export default function ConsultationHistoryScreen() {
     switch (status) {
       case 'completed': return 'bg-green-100 text-green-700';
       case 'confirmed': return 'bg-yellow-100 text-yellow-700';
+
       case 'cancelled': return 'bg-red-100 text-red-700';
       case 'missed': return 'bg-gray-100 text-gray-700';
+
       case 'pending': return 'bg-gray-200 text-gray-500';
       default: return 'bg-gray-200 text-gray-600';
     }
@@ -97,6 +104,7 @@ export default function ConsultationHistoryScreen() {
         {/* Stats */}
         <View className="px-6 mb-6">
           <View className="flex-row gap-3">
+
             <Card className="flex-1 items-center py-3 rounded-xl shadow-sm border">
               <Text className="text-lg font-bold text-green-600">
                 {bookings.filter(b => b.status === 'completed').length}
@@ -124,6 +132,7 @@ export default function ConsultationHistoryScreen() {
         <View className="px-6 mb-4">
           <View className="flex-row bg-gray-100 rounded-lg p-1">
             {[
+
               { key: 'all', label: `All (${filteredCountByStatus.all})` },
               { key: 'completed', label: `Completed (${filteredCountByStatus.completed})` },
               { key: 'confirmed', label: `Upcoming (${filteredCountByStatus.confirmed})` },
@@ -160,6 +169,7 @@ export default function ConsultationHistoryScreen() {
 
         {/* Consultation List */}
         <ScrollView className="flex-1 px-6">
+
           {filteredConsultations.length === 0 ? (
             <Text className="text-center text-gray-400 mt-10">No consultation found.</Text>
           ) : (

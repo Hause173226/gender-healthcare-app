@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import {
   View,
@@ -21,6 +22,7 @@ export default function RatingScreen() {
   const { bookingId } = useLocalSearchParams<{ bookingId: string }>();
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState('');
+
   const { user } = useAuth();
 
   const handleSubmit = async () => {
@@ -30,6 +32,7 @@ export default function RatingScreen() {
     }
 
     try {
+
       const token = await AsyncStorage.getItem('token');
       await consultationBookingService.updateBooking(bookingId, { rating, feedback });
       Alert.alert('Thank you!', 'Your rating has been submitted.');
@@ -45,6 +48,7 @@ export default function RatingScreen() {
   };
 
   return (
+
     <SafeAreaView className="flex-1 bg-white">
       <KeyboardAvoidingView
         className="flex-1"
@@ -110,5 +114,6 @@ export default function RatingScreen() {
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
+
   );
 }

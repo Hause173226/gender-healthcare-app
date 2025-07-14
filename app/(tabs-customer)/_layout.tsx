@@ -49,6 +49,7 @@ export default function CustomerTabsLayout() {
       />
       <Tabs.Screen
         name="consultations"
+
         options={{
           title: 'Consult',
           tabBarIcon: ({ size, color }) => (
@@ -83,6 +84,18 @@ export default function CustomerTabsLayout() {
       />
       <Tabs.Screen
         name="consultation-success"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="consultation-payment"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="booking-detail"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="rating"
         options={{ href: null }}
       />
       <Tabs.Screen

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+
 import {
   View,
   Text,
@@ -27,6 +28,7 @@ export default function BookingDetailScreen() {
       const data = await consultationBookingService.getBookingById(bookingId as string);
       setBooking(data);
     } catch (err) {
+
       Alert.alert('Error', 'Failed to load booking information.');
     }
   };
@@ -34,6 +36,7 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     fetchBooking();
   }, [bookingId]);
+
 
   useFocusEffect(
     useCallback(() => {
@@ -43,6 +46,7 @@ export default function BookingDetailScreen() {
 
   const handleCancel = async () => {
     try {
+
       // 1. Cập nhật trạng thái booking thành 'cancelled'
       await consultationBookingService.updateBooking(bookingId as string, {
         status: 'cancelled',
@@ -63,14 +67,13 @@ export default function BookingDetailScreen() {
     }
   };
 
-
-
   const goToRating = () => {
     router.push({
       pathname: '/(tabs-customer)/rating',
       params: { bookingId },
     });
   };
+
 
   if (!booking) {
     return (
@@ -84,6 +87,7 @@ export default function BookingDetailScreen() {
   const doctor = booking.scheduleId?.counselorId?.accountId;
   const time = `${booking.scheduleId?.startTime?.slice(11, 16)} - ${booking.scheduleId?.endTime?.slice(11, 16)}`;
   const date = booking.bookingDate?.slice(0, 10)?.split('-').reverse().join('/');
+
   const price = booking.scheduleId?.price || 0;
   const canRate =
     ['cancelled', 'missed', 'completed'].includes(booking.status) && !booking.rating;

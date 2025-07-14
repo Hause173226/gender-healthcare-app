@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import {
   View,
@@ -27,6 +28,7 @@ export default function ConsultationPaymentScreen() {
   } = useLocalSearchParams();
 
   const router = useRouter();
+
   const [loading, setLoading] = useState(false);
 
   const handlePayment = async () => {
@@ -58,6 +60,7 @@ export default function ConsultationPaymentScreen() {
   };
 
   return (
+
     <SafeAreaView className="flex-1 bg-white">
       {/* Header */}
       <View className="flex-row items-center px-4 py-3 border-b border-gray-200">
@@ -121,5 +124,6 @@ export default function ConsultationPaymentScreen() {
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
+
   );
 }

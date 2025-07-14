@@ -20,7 +20,7 @@ import forumAPI from '@/services/forumAPI';
 interface CreatePostModalProps {
   visible: boolean;
   onClose: () => void;
-  onPostCreated: () => void;
+  onPostCreated: (newPost?: any) => void;
 }
 
 export const CreatePostModal: React.FC<CreatePostModalProps> = ({ 
@@ -173,8 +173,18 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       // Close modal
       onClose();
       
-      // Notify parent that post was created
-      onPostCreated();
+      // Pass the created post data back to parent component
+      const newPost = response.data?.post || {
+        title: postData.title,
+        content: postData.content,
+        category: postData.category,
+        tags: postData.tags,
+        accountId: userId,
+        isAnonymous: postData.isAnonymous
+      };
+      
+      // Notify parent that post was created with the post data
+      onPostCreated(newPost);
       
       Alert.alert('Success', 'Your post has been created successfully and is awaiting moderation.');
       

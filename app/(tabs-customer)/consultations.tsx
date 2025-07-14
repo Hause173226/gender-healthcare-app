@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+
   View, Text, ScrollView,
   TouchableOpacity, Alert, ActivityIndicator, Image
 } from 'react-native';
@@ -7,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { consultationBookingService } from '@/services/consultationBookingService';
 import { consultationScheduleService } from '@/services/consultationScheduleService';
+
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import dayjs from 'dayjs';
@@ -17,6 +19,7 @@ interface Slot {
   start: string;
   end: string;
 }
+
 
 const slots: Slot[] = [
   { label: '09:00 - 10:00', start: '09:00', end: '10:00' },
@@ -67,6 +70,7 @@ export default function ConsultationsScreen() {
   const [loading, setLoading] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
 
+
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = dayjs().add(i, 'day');
     return {
@@ -88,6 +92,7 @@ export default function ConsultationsScreen() {
     if (selectedSlot) fetchCounselors();
   }, [selectedDate, selectedSlot]);
 
+
   useEffect(() => {
     const fetchCustomer = async () => {
       if (!user?._id) return;
@@ -95,7 +100,9 @@ export default function ConsultationsScreen() {
         const res = await consultationBookingService.getCustomerByAccountId(user._id);
         setCustomerId(res._id);
       } catch {
+
         Alert.alert('Error', 'Unable to fetch customer info');
+
       }
     };
     fetchCustomer();
@@ -104,7 +111,9 @@ export default function ConsultationsScreen() {
   const fetchCounselors = async () => {
     if (!selectedSlot) return;
     setLoading(true);
+
     setAvailableCounselors([]);
+
     try {
       const dateStr = dayjs(selectedDate).format('YYYY-MM-DD');
       const res = await consultationScheduleService.getAvailableCounselorsBySlot(
@@ -114,11 +123,14 @@ export default function ConsultationsScreen() {
       );
       setAvailableCounselors(res);
     } catch {
+
       Alert.alert('Error', 'Unable to fetch available counselors');
+
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleBooking = async (counselorId: string, accountName: string) => {
     try {
@@ -127,6 +139,7 @@ export default function ConsultationsScreen() {
         counselorId,
         dateStr
       );
+
       const matched = schedules.find(
         (s: any) => dayjs(s.startTime).format('HH:mm') === selectedSlot?.start
       );
@@ -149,11 +162,13 @@ export default function ConsultationsScreen() {
         },
       });
     } catch (error: any) {
+
       Alert.alert('Error', error?.response?.data?.message || error.message || 'Failed to book appointment.');
     }
   };
 
   return (
+
     <View className="flex-1 bg-healthcare-light" style={{ paddingTop: insets.top }}>
       {/* Header màu hồng */}
       <View className=" flex-row px-4 py-3">
@@ -235,6 +250,7 @@ export default function ConsultationsScreen() {
               return (
                 <TouchableOpacity
                   key={item._id}
+
                   className="flex-row items-start space-x-4 border border-pink-300 bg-white rounded-2xl px-4 py-3 mb-4 shadow-sm"
                   onPress={() => handleBooking(item._id, account.name)}
                 >
