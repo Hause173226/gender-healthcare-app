@@ -33,6 +33,8 @@ export default function CustomerHomeScreen() {
       color: '#81C784',
       action: () => {
         // Navigate to a health tips section or external resource
+       router.push('/(tabs-customer)/blog'),
+
         console.log('Health Tips clicked');
       },
     },

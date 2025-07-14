@@ -66,6 +66,19 @@ export default function CustomerTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="blog"
+        options={{
+          title: 'Blog',
+          tabBarIcon: ({ size, color }) => (
+            <Calendar size={size} color={color} />
+          ),
+        }}
+      />
+       <Tabs.Screen
+        name="blog-detail"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
         name="consultation-payment"
         options={{ href: null }}
       />
