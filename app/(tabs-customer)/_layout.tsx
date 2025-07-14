@@ -40,15 +40,6 @@ export default function CustomerTabsLayout() {
           ),
         }}
       />
-      {/* <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Chat',
-          tabBarIcon: ({ size, color }) => (
-            <MessageCircle size={size} color={color} />
-          ),
-        }}
-      /> */}
       <Tabs.Screen
         name="forum"
         options={{
@@ -116,12 +107,12 @@ export default function CustomerTabsLayout() {
           href: null, // Hide from tab bar
         }}
       />
-      {/* <Tabs.Screen
-        name="chat"
+      <Tabs.Screen
+        name="reminders"
         options={{
           href: null, // Hide from tab bar
         }}
-      /> */}
+      />
       <Tabs.Screen
         name="new-conversation"
         options={{
