@@ -40,15 +40,6 @@ export default function CustomerTabsLayout() {
           ),
         }}
       />
-      {/* <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Chat',
-          tabBarIcon: ({ size, color }) => (
-            <MessageCircle size={size} color={color} />
-          ),
-        }}
-      /> */}
       <Tabs.Screen
         name="forum"
         options={{
@@ -58,12 +49,42 @@ export default function CustomerTabsLayout() {
       />
       <Tabs.Screen
         name="consultations"
+
         options={{
           title: 'Consult',
           tabBarIcon: ({ size, color }) => (
             <Calendar size={size} color={color} />
           ),
         }}
+      />
+      <Tabs.Screen
+        name="blog"
+        options={{
+          title: 'Blog',
+          tabBarIcon: ({ size, color }) => (
+            <Calendar size={size} color={color} />
+          ),
+        }}
+      />
+       <Tabs.Screen
+        name="blog-detail"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="consultation-payment"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="booking-detail"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="rating"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="consultation-success"
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="consultation-payment"
@@ -85,6 +106,7 @@ export default function CustomerTabsLayout() {
         }}
       />
 
+
       {/* Hidden screens - not shown in tab bar */}
       <Tabs.Screen
         name="create-cycle"
@@ -98,12 +120,12 @@ export default function CustomerTabsLayout() {
           href: null, // Hide from tab bar
         }}
       />
-      {/* <Tabs.Screen
-        name="chat"
+      <Tabs.Screen
+        name="reminders"
         options={{
           href: null, // Hide from tab bar
         }}
-      /> */}
+      />
       <Tabs.Screen
         name="new-conversation"
         options={{

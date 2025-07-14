@@ -79,59 +79,54 @@ export default function CreateCycleScreen() {
     return days;
   };
 
+  const resetForm = () => {
+    setStartDate("");
+    setEndDate("");
+    setFlow("medium");
+    setSymptoms([]);
+    setNotes("");
+  };
+
   const handleSave = async () => {
     if (!startDate) {
-      Alert.alert("Error", "Please select a start date");
+      toast.error("Please select a start date");
       return;
     }
 
     if (!user?._id) {
-      Alert.alert("Error", "User not found");
+      toast.error("User not found");
       return;
     }
 
     setLoading(true);
 
     try {
-      // Generate period days array
-      const periodDays = endDate
-        ? generatePeriodDays(startDate, endDate)
-        : [startDate];
+      const periodDays = generatePeriodDays(startDate, endDate || startDate);
 
       const cycleData = {
-        customerId: user._id,
         periodDays,
+        customerId: user._id,
         symptoms,
         notes,
-        flowIntensity: flow,
       };
 
       const result = await cycleService.createCycle(cycleData);
 
-      // Fix: Check if result has _id (means created successfully)
-      if (result && result._id) {
-        toast.success("Period logged successfully!");
-        router.replace("/cycle");
-      } else {
-        throw new Error(
-          result.message || result.error || "Failed to create cycle"
-        );
-      }
+      toast.success("Cycle logged successfully!");
+
+      // Reset form về trạng thái ban đầu
+      resetForm();
+
+      // Có thể chọn 1 trong 2 cách:
+      // Cách 1: Navigate về cycle screen
+      router.replace("/(tabs-customer)/cycle");
+
+      // Cách 2: Ở lại trang create để có thể tạo cycle mới
+      // (Uncomment dòng dưới nếu muốn dùng cách 2)
+      // toast.success("Form reset! You can create another cycle.");
     } catch (error: any) {
-      console.error("=== DEBUG: Full error details ===");
-      console.error("Error object:", error);
-      console.error("Error message:", error.message);
-      console.error("Error response:", error.response?.data);
-      console.error("Error status:", error.response?.status);
-
-      // Show more detailed error message
-      const errorMessage =
-        error.response?.data?.message ||
-        error.response?.data?.error ||
-        error.message ||
-        "Failed to log period. Please try again.";
-
-      Alert.alert("Error", errorMessage);
+      console.error("Error creating cycle:", error);
+      toast.error(error.message || "Failed to log cycle");
     } finally {
       setLoading(false);
     }

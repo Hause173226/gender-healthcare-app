@@ -15,17 +15,24 @@ export default function CustomerHomeScreen() {
       color: '#F8BBD9',
       action: () => router.push('/(tabs-customer)/cycle'),
     },
-    {
-      title: 'Ask Question',
-      icon: MessageCircle,
-      color: '#E1F5FE',
-      action: () => router.push('/(tabs-customer)/forum'),
-    },
+
     {
       title: 'Book Test',
       icon: FlaskConical,
       color: '#B2DFDB',
       action: () => router.push('/(tabs-customer)/consultations'),
+
+    },
+    {
+      title: 'Forum',
+      icon: BookOpen,
+      color: '#81C784',
+      action: () => {
+        // Navigate to a health tips section or external resource
+       router.push('/(tabs-customer)/forum'),
+
+        console.log('Health Tips clicked');
+      },
     },
     {
       title: 'Health Tips',
@@ -33,6 +40,8 @@ export default function CustomerHomeScreen() {
       color: '#81C784',
       action: () => {
         // Navigate to a health tips section or external resource
+       router.push('/(tabs-customer)/blog'),
+
         console.log('Health Tips clicked');
       },
     },
