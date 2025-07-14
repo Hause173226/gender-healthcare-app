@@ -14,6 +14,8 @@ import {
 } from 'lucide-react-native';
 import forumAPI, { ForumPost, Comment } from '@/services/forumAPI';
 import { CreatePostModal } from '@/components/CreatePostModal';
+import { PostCard } from '@/components/forum/PostCard';
+import { PostDetail } from '@/components/forum/PostDetail';
 
 // Helper function to get post ID consistently regardless of format
 const getPostId = (post: any): string | null => {
@@ -62,7 +64,6 @@ export default function ForumScreen() {
   const [replyingToComment, setReplyingToComment] = useState<string | null>(null);
   const [replyContent, setReplyContent] = useState('');
   const [replyIsAnonymous, setReplyIsAnonymous] = useState(false);
-  const [submittingReply, setSubmittingReply] = useState(false);
   
   // Active tab state
   const [activeTab, setActiveTab] = useState<'all' | 'questions' | 'expert' | 'following' | 'myPosts'>('all');
@@ -79,7 +80,6 @@ export default function ForumScreen() {
   const [forumPosts, setForumPosts] = useState<ForumPost[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentReplies, setCommentReplies] = useState<Record<string, Comment[]>>({});
-  const [submitLoading, setSubmitLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMorePosts, setHasMorePosts] = useState(true);
@@ -353,9 +353,28 @@ export default function ForumScreen() {
   }, [fetchComments]);
 
   // Format date function
-  const formatDate = (dateInput: string | { $date: string }) => {
-    const dateString = typeof dateInput === 'object' && dateInput.$date ? dateInput.$date : (dateInput as string);
+  const formatDate = (dateInput: string | { $date: string } | Date) => {
+    let dateString: string;
+    
+    if (dateInput instanceof Date) {
+      dateString = dateInput.toISOString();
+    } else if (typeof dateInput === 'object' && dateInput.$date) {
+      dateString = dateInput.$date;
+    } else if (typeof dateInput === 'string') {
+      dateString = dateInput;
+    } else {
+      console.warn('Invalid date format:', dateInput);
+      return 'Invalid Date';
+    }
+    
     const date = new Date(dateString);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date string:', dateString);
+      return 'Invalid Date';
+    }
+    
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
     const diffSeconds = Math.floor(diffTime / 1000);
@@ -372,47 +391,110 @@ export default function ForumScreen() {
     return date.toLocaleDateString();
   };
 
-  // Handle submitting a new comment
+  // Handle submitting a new comment with optimistic updates
   const handleSubmitComment = async () => {
     if (newComment.trim() === '' || !selectedPostId || !accountId) return;
     
-    setSubmitLoading(true);
+    // Keep a copy of the comment text before clearing
+    const commentText = newComment.trim();
+    const isAnonymousValue = isAnonymous;
+    
+    // --- STEP 1: PREPARE OPTIMISTIC COMMENT ---
+    const tempId = `temp-${Date.now()}`;
+    const optimisticComment: Comment = {
+      _id: tempId,
+      content: commentText,
+      postId: selectedPostId,
+      accountId: typeof accountId === 'string' 
+        ? { _id: accountId, name: 'You' } 
+        : { _id: accountId, name: 'You' },
+      voteUp: [],
+      voteDown: [],
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isAnonymous: isAnonymousValue
+    };
+    
+    // --- STEP 2: IMMEDIATELY UPDATE UI ---
+    // Clear input field right away for better UX
+    setNewComment('');
+    
+    // Add optimistic comment to the top of the list
+    setComments(prevComments => [optimisticComment, ...prevComments]);
+    
     try {
+      // --- STEP 3: MAKE API CALL IN BACKGROUND ---
       const commentData = {
-        content: newComment,
-        isAnonymous,
+        content: commentText,
+        isAnonymous: isAnonymousValue,
         accountId
       };
       
-      await forumAPI.addComment(selectedPostId, commentData);
+      const response = await forumAPI.addComment(selectedPostId, commentData);
       
-      // Clear input field
-      setNewComment('');
+      // Handle the response
+      let serverComment = null;
+      if (response?.data?.comment) {
+        serverComment = response.data.comment;
+      } else if (response?.data) {
+        serverComment = response.data;
+      }
       
-      // Refresh comments to show new comment
-      await fetchComments(); 
+      if (serverComment) {
+        // Replace the optimistic comment with the real one from server
+        setComments(prevComments => prevComments.map(comment => 
+          comment._id === tempId ? serverComment : comment
+        ));
+      } else {
+        // If we can't extract the comment from response, refresh all comments
+        await fetchComments();
+      }
       
-      // Refresh main list to update answer count
-      onRefresh();
+      // Update answer count in post list
+      if (selectedPostDetail) {
+        const updatedPost = {
+          ...selectedPostDetail,
+          answerCount: (selectedPostDetail.answerCount || 0) + 1
+        };
+        
+        // Update in the post list
+        setForumPosts(prevPosts => prevPosts.map(p => 
+          getPostId(p) === selectedPostId ? updatedPost : p
+        ));
+        
+        // Update selected post detail
+        setSelectedPostDetail(updatedPost);
+      }
     } catch (error) {
       console.error('Error adding comment:', error);
+      
+      // --- STEP 4: HANDLE ERROR AND ROLLBACK ---
+      // Remove the optimistic comment
+      setComments(prevComments => prevComments.filter(comment => comment._id !== tempId));
+      
+      // Restore comment text in case user wants to retry
+      setNewComment(commentText);
+      
       Alert.alert(
         'Error', 
         'Unable to post comment. Please try again.', 
         [{ text: 'Close' }, { text: 'Retry', onPress: handleSubmitComment }]
       );
-    } finally {
-      setSubmitLoading(false);
     }
   };
   
-  // Handle post voting
+  // Handle post voting with optimistic updates
   const handlePostVote = async (postId: string, voteType: 'up' | 'down') => {
     if (!accountId) {
       Alert.alert('Login Required', 'You need to be logged in to vote.');
       return;
     }
-    
+
+    // --- STEP 1: SAVE ORIGINAL STATE FOR ROLLBACK IF NEEDED ---
+    const originalPosts = [...forumPosts];
+    const originalSelectedPost = selectedPostDetail ? { ...selectedPostDetail } : null;
+
     try {
       // Determine if this is a toggle (clicking same vote type again)
       const post = forumPosts.find(p => getPostId(p) === postId);
@@ -425,7 +507,7 @@ export default function ForumScreen() {
       // If toggling, we'll send null to remove the vote
       const voteTypeToSend = isToggling ? null : voteType;
       
-      // Optimistic UI update before API response
+      // --- STEP 2: IMMEDIATE OPTIMISTIC UI UPDATE ---
       const updatedPosts = forumPosts.map(p => {
         if (getPostId(p) === postId) {
           let voteUp = [...(p.voteUp || [])];
@@ -447,6 +529,7 @@ export default function ForumScreen() {
         return p;
       });
       
+      // Update UI immediately
       setForumPosts(updatedPosts);
       
       // Also update the selected post detail if this is the active post
@@ -455,10 +538,10 @@ export default function ForumScreen() {
         if (updatedPost) setSelectedPostDetail(updatedPost);
       }
       
-      // Make the API call
+      // --- STEP 3: MAKE API CALL IN BACKGROUND ---
       const response = await forumAPI.votePost(postId, { voteType: voteTypeToSend, accountId });
       
-      // Update with server response data
+      // Update with server response data (to ensure consistency)
       if (response?.data?.post) {
         const serverPost = response.data.post;
         
@@ -494,11 +577,11 @@ export default function ForumScreen() {
       console.error(`Error ${voteType}-voting post:`, error);
       Alert.alert('Error', 'Could not register your vote. Please try again.');
       
-      // On error, refresh data to ensure UI is in sync with server state
-      if (selectedPostId === postId) {
-        fetchComments();
-      } else {
-        fetchForumData(true);
+      // --- STEP 4: ROLLBACK ON ERROR ---
+      // Restore original state if API call fails
+      setForumPosts(originalPosts);
+      if (selectedPostId === postId && originalSelectedPost) {
+        setSelectedPostDetail(originalSelectedPost);
       }
     }
   };
@@ -523,19 +606,22 @@ export default function ForumScreen() {
     }
   }, [activeTab, accountId]);
 
-  // Handle comment voting
+  // Handle comment voting with optimistic updates
   const handleCommentVote = async (commentId: string, voteType: 'up' | 'down') => {
     if (!accountId) {
       Alert.alert('Login Required', 'Please log in to vote on comments.');
       return;
     }
     
+    // --- STEP 1: SAVE ORIGINAL STATE FOR ROLLBACK IF NEEDED ---
+    const originalComments = [...comments];
+    
     try {
       // Find the current comment in state
       const originalComment = comments.find(c => c._id === commentId);
       if (!originalComment) return;
 
-      // Optimistically update UI before API response
+      // --- STEP 2: IMMEDIATE OPTIMISTIC UI UPDATE ---
       const updatedComments = comments.map(comment => {
         if (comment._id === commentId) {
           // Make copies of vote arrays to avoid mutating state
@@ -568,11 +654,20 @@ export default function ForumScreen() {
         return comment;
       });
       
-      // Update state with optimistic changes
+      // Update state with optimistic changes immediately
       setComments(updatedComments);
       
-      // Make API call
-      const response = await forumAPI.voteComment(commentId, { voteType, accountId });
+      // --- STEP 3: MAKE API CALL IN BACKGROUND ---
+      // Determine vote type to send (null if toggling off)
+      const commentUserVote = originalComment.voteUp?.includes(accountId) ? 'up' : 
+                            (originalComment.voteDown?.includes(accountId) ? 'down' : null);
+      const isToggling = commentUserVote === voteType;
+      const voteTypeToSend = isToggling ? null : voteType;
+      
+      const response = await forumAPI.voteComment(commentId, { 
+        voteType: voteTypeToSend, 
+        accountId 
+      });
       
       // Handle different response formats
       let serverComment = null;
@@ -598,8 +693,9 @@ export default function ForumScreen() {
     } catch (error) {
       console.error(`Error ${voteType}-voting comment:`, error);
       Alert.alert('Error', 'Could not register your vote. Please try again.');
-      // Refresh comments to restore correct state
-      fetchComments();
+      
+      // --- STEP 4: ROLLBACK ON ERROR ---
+      setComments(originalComments);
     }
   };
   
@@ -634,8 +730,21 @@ export default function ForumScreen() {
       
       // console.log(`Extracted ${repliesList.length} replies for comment ${commentId}`);
       
-      // Filter out invalid replies
-      const validReplies = repliesList.filter((reply: any) => reply && reply._id);
+      // Filter out invalid replies and ensure proper date format
+      const validReplies = repliesList.filter((reply: any) => reply && reply._id).map((reply: any) => {
+        // Ensure reply has proper date format
+        if (reply.createdAt && typeof reply.createdAt === 'string') {
+          const date = new Date(reply.createdAt);
+          if (isNaN(date.getTime())) {
+            // If date is invalid, use current date
+            reply.createdAt = new Date().toISOString();
+          }
+        } else if (!reply.createdAt) {
+          // If no createdAt, add current date
+          reply.createdAt = new Date().toISOString();
+        }
+        return reply;
+      });
       
       // Update state
       setCommentReplies(prev => ({ ...prev, [commentId]: validReplies }));
@@ -647,39 +756,110 @@ export default function ForumScreen() {
     }
   };
 
-  // Handle submitting a reply to a comment
+  // Handle submitting a reply to a comment with optimistic updates
   const handleSubmitReply = async (commentId: string) => {
     if (replyContent.trim() === '' || !accountId || !selectedPostId) return;
     
-    setSubmittingReply(true);
+    // Store values before clearing
+    const replyText = replyContent.trim();
+    const isAnonymousValue = replyIsAnonymous;
+    
+    // --- STEP 1: PREPARE OPTIMISTIC REPLY ---
+    const tempId = `temp-reply-${Date.now()}`;
+    const optimisticReply: Comment = {
+      _id: tempId,
+      content: replyText,
+      postId: selectedPostId,
+      accountId: typeof accountId === 'string' 
+        ? { _id: accountId, name: 'You' } 
+        : { _id: accountId, name: 'You' },
+      voteUp: [],
+      voteDown: [],
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isAnonymous: isAnonymousValue
+    };
+    
+    // --- STEP 2: IMMEDIATELY UPDATE UI ---
+    setReplyContent('');
+    setReplyingToComment(null);
+    setCommentReplies(prev => {
+      const currentReplies = prev[commentId] || [];
+      return {
+        ...prev,
+        [commentId]: [...currentReplies, optimisticReply]
+      };
+    });
+    setExpandedComments(prev => ({ ...prev, [commentId]: true }));
+    
     try {
+      // --- STEP 3: MAKE API CALL IN BACKGROUND ---
       const replyData = {
-        content: replyContent,
-        isAnonymous: replyIsAnonymous,
+        content: replyText,
+        isAnonymous: isAnonymousValue,
         accountId,
         postId: selectedPostId
       };
       
-      await forumAPI.replyToComment(commentId, replyData);
+      const response = await forumAPI.replyToComment(commentId, replyData);
       
-      // Reset input field and close reply form
-      setReplyContent('');
-      setReplyingToComment(null);
+      // Handle different response formats
+      let serverReply: Comment | null = null;
+      if (response?.data?.reply) {
+        serverReply = response.data.reply;
+      } else if (response?.data) {
+        serverReply = response.data;
+      }
       
-      // Fetch updated replies
-      await fetchCommentReplies(commentId);
-      
-      // Also refresh all comments to update reply counts
-      await fetchComments();
+      if (serverReply) {
+        // Merge missing fields from optimisticReply if needed
+        serverReply = { ...optimisticReply, ...serverReply };
+        // Ensure the server reply has proper date format
+        if (serverReply.createdAt && typeof serverReply.createdAt === 'string') {
+          const date = new Date(serverReply.createdAt);
+          if (isNaN(date.getTime())) {
+            serverReply.createdAt = new Date().toISOString();
+          }
+        } else if (!serverReply.createdAt) {
+          serverReply.createdAt = new Date().toISOString();
+        }
+        // Replace optimistic reply with server reply
+        setCommentReplies(prev => {
+          const currentReplies = prev[commentId] || [];
+          return {
+            ...prev,
+            [commentId]: currentReplies.map(reply =>
+              reply._id === tempId && serverReply ? serverReply : reply
+            )
+          };
+        });
+        // Optionally: update reply count for parent comment in comments array
+        setComments(prev =>
+          prev.map(c =>
+            c._id === commentId && serverReply
+              ? { ...c, replies: [...((c.replies as any) || []), serverReply] }
+              : c
+          )
+        );
+      }
+      // Nếu không có serverReply thì giữ optimistic reply, không fetch lại toàn bộ replies/comments
     } catch (error) {
-      console.error('Error adding reply:', error);
+      // --- STEP 4: HANDLE ERROR AND ROLLBACK ---
+      setCommentReplies(prev => {
+        const currentReplies = prev[commentId] || [];
+        return {
+          ...prev,
+          [commentId]: currentReplies.filter(reply => reply._id !== tempId)
+        };
+      });
+      setReplyContent(replyText);
+      setReplyingToComment(commentId);
       Alert.alert(
-        'Error', 
-        'Could not post reply. Please try again.', 
+        'Error',
+        'Could not post reply. Please try again.',
         [{ text: 'Close' }, { text: 'Retry', onPress: () => handleSubmitReply(commentId) }]
       );
-    } finally {
-      setSubmittingReply(false);
     }
   };
 
@@ -694,469 +874,14 @@ export default function ForumScreen() {
     setSearchQuery(''); // Reset search when changing tabs
     
     if ((tab === 'following' || tab === 'myPosts') && !accountId) {
-      setForumPosts([]);
+      // setForumPosts([]);
       setLoading(false);
     } else {
       setRefreshing(true);
-      fetchForumData(true); // Refresh data with new tab
+      // fetchForumData(true); // Refresh data with new tab
     }
   };
 
-  // Reusable Post Card Component
-  const PostCard = React.memo(({ post, onPress }: { post: ForumPost, onPress: () => void }) => {
-    const postId = getPostId(post);
-    if (!postId) return null;
-
-    const upVotes = post.voteUp?.length || 0;
-    const userVote = accountId ? (post.voteUp?.includes(accountId) ? 'up' : (post.voteDown?.includes(accountId) ? 'down' : null)) : null;
-    const authorName = post.isAnonymous ? "Anonymous" : getUserName(post.accountId);
-    
-    const getCategoryColor = (category: string) => {
-        // ... (implementation from your code)
-        switch(category) {
-            case 'Reproductive Health': return 'bg-pink-100 text-pink-800';
-            case 'Mental Health': return 'bg-purple-100 text-purple-800';
-            //... add other cases
-            default: return 'bg-gray-100 text-gray-800';
-        }
-    };
-    
-    return (
-        <Card className="mb-3">
-            <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-                <View className="flex-row justify-between items-start mb-2">
-                    <View className="flex-1 pr-3">
-                        <Text className="font-bold text-base text-gray-800">{post.title}</Text>
-                        <View className="flex-row items-center mt-1">
-                            <View className="flex-row items-center">
-                            {!post.isAnonymous && typeof post?.accountId === 'object' && (
-                                <Image 
-                                    source={{ uri: post?.accountId?.image || 'https://i.imgur.com/6VBx3io.png' }} 
-                                    className="w-5 h-5 rounded-full mr-2"
-                                />
-                            )}
-                            <Text className="text-xs text-gray-600">{authorName} • {formatDate(post.createdAt)}</Text>
-                        </View>
-                        </View>
-                    </View>
-                    <View className="items-center bg-gray-50 py-1 px-2 rounded-lg">
-                        <TouchableOpacity onPress={() => handlePostVote(postId, 'up')} disabled={!accountId}>
-                            <ChevronUp size={18} color={userVote === 'up' ? '#F8BBD9' : '#6b7280'} />
-                        </TouchableOpacity>
-                        <Text className="text-sm font-bold text-green-600">{upVotes}</Text>
-                        <TouchableOpacity onPress={() => handlePostVote(postId, 'down')} disabled={!accountId}>
-                            <ChevronDown size={18} color={userVote === 'down' ? '#F8BBD9' : '#6b7280'} />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-                <Text numberOfLines={3} className="text-gray-600 text-sm mb-3">{post.content}</Text>
-                <View className="flex-row justify-between items-center">
-                    <View className="flex-row flex-wrap items-center">
-                         <View className={`rounded-full px-3 py-1 mr-2 ${getCategoryColor(post.category)}`}>
-                             <Text className="text-xs font-medium">{post.category}</Text>
-                         </View>
-                         {post.hasExpertAnswer && (
-                            <View className="bg-green-100 rounded-full px-3 py-1 flex-row items-center">
-                                <CheckCircle size={12} color="#059669" />
-                                <Text className="text-xs font-medium text-green-800 ml-1">Expert</Text>
-                            </View>
-                         )}
-                    </View>
-                    <View className="flex-row items-center">
-                        <Eye size={14} color="#6b7280" />
-                        <Text className="text-xs text-gray-500 ml-1 mr-3">{post.viewCount || 0}</Text>
-                        <MessageCircle size={14} color="#6b7280" />
-                        <Text className="text-xs text-gray-500 ml-1">{post.answerCount || 0}</Text>
-                    </View>
-                </View>
-            </TouchableOpacity>
-        </Card>
-    );
-  });
-  
-  // Post Detail Component
-  const PostDetail = ({ post }: { post: ForumPost | null }) => {
-    if (!post) return null;
-    
-    const upVotes = post.voteUp?.length || 0;
-    const userVote = accountId ? (post.voteUp?.includes(accountId) ? 'up' : (post.voteDown?.includes(accountId) ? 'down' : null)) : null;
-    const authorName = post.isAnonymous ? "Anonymous" : getUserName(post.accountId);
-    const downVotes = post.voteDown?.length || 0;
-    const totalVotes = upVotes - downVotes;
-
-    // Function to determine category styling
-    const getCategoryColor = (category: string) => {
-      switch(category) {
-          case 'Reproductive Health': return 'bg-pink-100 text-pink-800';
-          case 'Mental Health': return 'bg-purple-100 text-purple-800';
-          case 'Sexual Health': return 'bg-red-100 text-red-800';
-          case 'General Health': return 'bg-blue-100 text-blue-800';
-          case 'Nutrition': return 'bg-green-100 text-green-800';
-          default: return 'bg-gray-100 text-gray-800';
-      }
-    };
-
-    const renderComment = (comment: Comment) => {
-      if (!comment || !comment._id) return null;
-      
-      const commentId = comment._id;
-      const isExpanded = !!expandedComments[commentId];
-      const replies = commentReplies[commentId] || [];
-      const isLoadingReplies = !!loadingReplies[commentId];
-      
-      // Safely access vote arrays with fallbacks
-      const voteUp = Array.isArray(comment.voteUp) ? comment.voteUp : [];
-      const voteDown = Array.isArray(comment.voteDown) ? comment.voteDown : [];
-      
-      const userCommentVote = accountId ? 
-        (voteUp.includes(accountId) ? 'up' : 
-         (voteDown.includes(accountId) ? 'down' : null)) : null;
-      
-      const commentUpVotes = voteUp.length;
-      const isExpertComment = comment.accountId && typeof comment.accountId === 'object' && comment.accountId.role === 'Counselor';
-
-      // Get comment author name safely
-      let authorName = "Unknown User";
-      if (comment.isAnonymous) {
-        authorName = "Anonymous";
-      } else if (comment.accountId) {
-        if (typeof comment.accountId === 'string') {
-          authorName = "User";
-        } else if (typeof comment.accountId === 'object') {
-          authorName = comment.accountId.name || `User ${String(comment.accountId._id || '').substring(0, 5)}`;
-        }
-      }
-
-      return (
-        <Card 
-          key={commentId} 
-          className={`mb-4 shadow-sm ${
-            isExpertComment 
-              ? "border-2 border-green-200 bg-green-50/30" 
-              : "border border-gray-100"
-          }`}
-        >
-          <View className="flex-row items-center">
-            {!comment?.isAnonymous && comment?.accountId && typeof comment?.accountId === 'object' && (
-              <Image 
-                source={{ uri: comment?.accountId?.image || 'https://i.imgur.com/6VBx3io.png' }} 
-                className={`${isExpertComment ? "w-10 h-10" : "w-8 h-8"} rounded-full mr-2 ${isExpertComment ? "border-2 border-green-400" : ""}`}
-              />
-            )}
-            <View className="flex-1">
-              <View className="flex-row items-center">
-                <Text className={`font-bold ${isExpertComment ? "text-green-800 text-base" : "text-gray-800"}`}>
-                  {authorName}
-                </Text>
-                {isExpertComment && (
-                  <View className="bg-green-100 rounded-full px-2 py-1 ml-2 flex-row items-center">
-                    <CheckCircle size={12} color="#059669" />
-                    <Text className="text-xs font-medium text-green-800 ml-1">Expert</Text>
-                  </View>
-                )}
-              </View>
-              <Text className="text-xs text-gray-500">{formatDate(comment.createdAt)}</Text>
-            </View>
-          </View>
-          
-          <Text className={`mt-3 mb-1 leading-5 ${isExpertComment ? "text-gray-800 font-medium" : "text-gray-700"}`}>
-            {comment.content}
-          </Text>
-          
-          <View className={`flex-row justify-between items-center mt-3 pt-2 border-t ${isExpertComment ? "border-green-200" : "border-gray-100"}`}>
-            <View className="flex-row items-center">
-                <TouchableOpacity 
-                  onPress={() => handleCommentVote(commentId, 'up')} 
-                  disabled={!accountId} 
-                  className={`p-1 rounded-md mr-1 ${isExpertComment ? "bg-green-100" : "bg-gray-50"}`}
-                >
-                    <ChevronUp size={16} color={userCommentVote === 'up' ? '#F8BBD9' : isExpertComment ? '#047857' : '#6b7280'} />
-                </TouchableOpacity>
-                <Text className={`text-sm mx-1 font-medium ${isExpertComment ? "text-green-700" : "text-green-600"}`}>{commentUpVotes}</Text>
-                <TouchableOpacity 
-                  onPress={() => handleCommentVote(commentId, 'down')} 
-                  disabled={!accountId} 
-                  className={`p-1 rounded-md mr-3 ${isExpertComment ? "bg-green-100" : "bg-gray-50"}`}
-                >
-                    <ChevronDown size={16} color={userCommentVote === 'down' ? '#F8BBD9' : isExpertComment ? '#047857' : '#6b7280'} />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  onPress={() => setReplyingToComment(replyingToComment === commentId ? null : commentId)} 
-                  className={`flex-row items-center px-2 py-1 rounded-md ${isExpertComment ? "bg-green-100" : "bg-gray-50"}`}
-                >
-                  <MessageCircle size={14} color={isExpertComment ? "#047857" : "#6b7280"} />
-                  <Text className={`text-xs font-medium ml-1 ${isExpertComment ? "text-green-800" : "text-gray-600"}`}>Reply</Text>
-                </TouchableOpacity>
-            </View>
-            {(comment.replies && comment.replies.length > 0) && (
-              <TouchableOpacity
-                onPress={() => {
-                  if (!isExpanded) fetchCommentReplies(commentId);
-                  setExpandedComments(prev => ({ ...prev, [commentId]: !isExpanded }));
-                }}
-                className={`flex-row items-center px-2 py-1 rounded-md ${isExpertComment ? "bg-green-100" : "bg-gray-50"}`}
-              >
-                <Text className="text-xs font-medium text-healthcare-primary mr-1">
-                  {isExpanded ? 'Hide Replies' : `View ${comment.replies.length} Replies`}
-                </Text>
-                <ChevronDown size={14} color="#F8BBD9" style={{ transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }}/>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Reply Form */}
-          {replyingToComment === commentId && (
-            <View className={`mt-4 pt-3 p-3 rounded-lg ${isExpertComment ? "bg-green-50" : "bg-gray-50"}`}>
-               <TextInput
-                  className={`bg-white rounded-lg px-3 py-2 text-sm ${isExpertComment ? "border border-green-200" : "border border-gray-200"}`}
-                  placeholder={`Replying to ${comment.isAnonymous ? 'Anonymous' : comment.accountId?.name}${isExpertComment ? ' (Expert)' : ''}...`}
-                  value={replyContent}
-                  onChangeText={setReplyContent}
-                  multiline
-                />
-                <View className="flex-row justify-between items-center mt-3">
-                  <View className="flex-row items-center">
-                    <Switch 
-                      value={replyIsAnonymous} 
-                      onValueChange={setReplyIsAnonymous} 
-                      trackColor={{ false: "#d1d5db", true: "#F8BBD9" }} 
-                      thumbColor={replyIsAnonymous ? "#ffffff" : "#ffffff"} 
-                    />
-                    <Text className="text-xs text-gray-500 ml-1">Post as anonymous</Text>
-                  </View>
-                  <View className="flex-row">
-                    <Button 
-                      title="Cancel" 
-                      variant='outline' 
-                      size='small' 
-                      onPress={() => setReplyingToComment(null)} 
-                      className="mr-2"
-                    />
-                    <Button 
-                      title="Reply" 
-                      size='small' 
-                      onPress={() => handleSubmitReply(commentId)} 
-                      loading={submittingReply} 
-                      disabled={!replyContent.trim()} 
-                    />
-                  </View>
-                </View>
-            </View>
-          )}
-
-          {/* Replies Section */}
-          {isExpanded && (
-            <View className={`mt-3 ml-4 pl-3 border-l-2 ${isExpertComment ? "border-green-300" : "border-healthcare-primary/20"}`}>
-              {isLoadingReplies ? (
-                <View className="py-4 items-center">
-                  <ActivityIndicator color={isExpertComment ? "#059669" : "#F8BBD9"} size="small" />
-                </View>
-              ) : replies.length > 0 ? (
-                replies.map(reply => {
-                  const isExpertReply = reply.accountId && typeof reply.accountId === 'object' && reply.accountId.role === 'counselor';
-                  return (
-                    <View 
-                      key={reply._id} 
-                      className={`py-2 mb-1 ${isExpertReply ? "bg-green-50/50 rounded-md px-2" : ""}`}
-                    >
-                      <View className="flex-row items-center">
-                        {!reply?.isAnonymous && reply?.accountId && typeof reply?.accountId === 'object' && (
-                          <Image 
-                            source={{ uri: reply?.accountId?.image || 'https://i.imgur.com/6VBx3io.png' }} 
-                            className={`${isExpertReply ? "w-7 h-7" : "w-6 h-6"} rounded-full mr-2 ${isExpertReply ? "border-2 border-green-300" : ""}`}
-                          />
-                        )}
-                        <View>
-                          <View className="flex-row items-center">
-                            <Text className={`font-bold text-sm ${isExpertReply ? "text-green-800" : "text-gray-800"}`}>
-                              {reply.isAnonymous ? 'Anonymous' : reply.accountId?.name}
-                            </Text>
-                            {isExpertReply && (
-                              <View className="bg-green-100 rounded-full px-1.5 py-0.5 ml-1.5 flex-row items-center">
-                                <CheckCircle size={8} color="#059669" />
-                                <Text className="text-xs font-medium text-green-800 ml-0.5">Expert</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text className="text-xs text-gray-500">{formatDate(reply.createdAt)}</Text>
-                        </View>
-                      </View>
-                      <Text className={`text-sm mt-1 ${isExpertReply ? "text-gray-800 font-medium" : "text-gray-700"}`}>
-                        {reply.content}
-                      </Text>
-                    </View>
-                  );
-                })
-              ) : (
-                <Text className="text-xs text-gray-500 py-2">No replies yet</Text>
-              )}
-            </View>
-          )}
-        </Card>
-      );
-    }
-    
-    return (
-      <View className="flex-1 bg-gray-50">
-        <ScrollView
-            contentContainerStyle={{ padding: 16 }}
-            refreshControl={<RefreshControl refreshing={loadingComments} onRefresh={fetchComments} colors={["#F8BBD9"]} />}
-            showsVerticalScrollIndicator={false}
-        >
-            {/* Back Button with improved styling */}
-            <TouchableOpacity 
-              onPress={() => setSelectedPostId(null)} 
-              className="flex-row items-center mb-4 bg-white py-2 px-3 rounded-full shadow-sm border border-gray-100"
-            >
-              <ChevronUp size={18} color="#F8BBD9" style={{ transform: [{ rotate: '-90deg' }] }} />
-              <Text className="text-healthcare-primary font-medium ml-1">Back to Forum</Text>
-            </TouchableOpacity>
-
-            {/* Post Card with enhanced styling */}
-            <Card className="mb-6 shadow-md border border-gray-100 overflow-hidden">
-               {/* Post Header with Author Info and Voting */}
-               <View className="mb-4 pb-3 border-b border-gray-100">
-                  <View className="flex-row justify-between items-start mb-3">
-                    <View className="flex-row items-center">
-                      {!post?.isAnonymous && typeof post?.accountId === 'object' && (
-                        <Image 
-                          source={{ uri: post?.accountId?.image || 'https://i.imgur.com/6VBx3io.png' }} 
-                          className="w-10 h-10 rounded-full mr-3"
-                        />
-                      )}
-                      <View>
-                        <Text className="font-bold text-gray-800">{authorName}</Text>
-                        <Text className="text-xs text-gray-500">{formatDate(post.createdAt)}</Text>
-                      </View>
-                    </View>
-                    <View className="flex-row items-center">
-                      <View className="bg-gray-50 py-1 px-3 rounded-full mr-2 flex-row items-center">
-                        <Eye size={14} color="#6b7280" />
-                        <Text className="text-xs text-gray-500 ml-1">{post.viewCount || 0}</Text>
-                      </View>
-                      <View className="bg-gray-50 py-1 px-3 rounded-full flex-row items-center">
-                        <MessageCircle size={14} color="#6b7280" />
-                        <Text className="text-xs text-gray-500 ml-1">{comments.length}</Text>
-                      </View>
-                    </View>
-                  </View>
-                  
-                  {/* Title and Category */}
-                  <Text className="font-bold text-2xl text-gray-800 mb-2">{post.title}</Text>
-                  
-                  {/* Category and Tags */}
-                  <View className="flex-row flex-wrap mt-2">
-                    {post.category && (
-                      <View className={`rounded-full px-3 py-1 mr-2 mb-2 ${getCategoryColor(post.category)}`}>
-                        <Text className="text-xs font-medium">{post.category}</Text>
-                      </View>
-                    )}
-                    {post.tags?.map(tag => (
-                      <View key={tag} className="bg-gray-100 rounded-full px-3 py-1 mr-2 mb-2">
-                        <Text className="text-xs text-gray-700">#{tag}</Text>
-                      </View>
-                    ))}
-                  </View>
-               </View>
-               
-               {/* Post Content */}
-               <Text className="text-gray-700 mb-5 leading-6">{post.content}</Text>
-               
-               {/* Voting Controls */}
-               <View className="flex-row justify-between items-center pt-3 border-t border-gray-100">
-                  <Text className="text-sm text-gray-500">Was this post helpful?</Text>
-                  <View className="flex-row items-center">
-                    <TouchableOpacity 
-                      onPress={() => handlePostVote(getPostId(post)!, 'up')} 
-                      disabled={!accountId}
-                      className={`flex-row items-center px-3 py-2 mr-2 rounded-md ${userVote === 'up' ? 'bg-pink-50' : 'bg-gray-50'}`}
-                    >
-                      <ThumbsUp size={16} color={userVote === 'up' ? '#F8BBD9' : '#6b7280'} />
-                      <Text className={`text-sm ml-1 ${userVote === 'up' ? 'text-healthcare-primary font-medium' : 'text-gray-600'}`}>
-                        Yes ({upVotes})
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      onPress={() => handlePostVote(getPostId(post)!, 'down')} 
-                      disabled={!accountId}
-                      className={`flex-row items-center px-3 py-2 rounded-md ${userVote === 'down' ? 'bg-pink-50' : 'bg-gray-50'}`}
-                    >
-                      <ThumbsDown size={16} color={userVote === 'down' ? '#F8BBD9' : '#6b7280'} />
-                      <Text className={`text-sm ml-1 ${userVote === 'down' ? 'text-healthcare-primary font-medium' : 'text-gray-600'}`}>
-                        No ({downVotes})
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-               </View>
-            </Card>
-
-            {/* Comments Section Header */}
-            <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-lg font-bold text-healthcare-primary">
-                Comments ({comments.length})
-              </Text>
-              {comments.length > 0 && (
-                <TouchableOpacity className="flex-row items-center">
-                  <Text className="text-xs text-healthcare-primary mr-1">Most Helpful</Text>
-                  <ChevronDown size={14} color="#F8BBD9" />
-                </TouchableOpacity>
-              )}
-            </View>
-            
-            {/* Comments List */}
-            {loadingComments ? (
-              <View className="py-8 items-center">
-                <ActivityIndicator color="#F8BBD9" size="large" />
-              </View>
-            ) : comments.length > 0 ? (
-              comments.map(comment => renderComment(comment))
-            ) : (
-              <Card className="items-center py-6 mb-4">
-                <MessageCircle size={32} color="#d1d5db" />
-                <Text className="text-center text-gray-500 mt-3 font-medium">Be the first to comment!</Text>
-                <Text className="text-center text-gray-400 text-xs mt-1">Share your thoughts on this post</Text>
-              </Card>
-            )}
-        </ScrollView>
-        
-        {/* Comment Input Section */}
-        {accountId ? (
-          <View className="px-4 py-3 border-t border-gray-200 bg-white shadow-md">
-            <View className="flex-row items-start">
-              <TextInput
-                className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 mr-2 text-base border border-gray-200"
-                placeholder="Add a comment..."
-                value={newComment}
-                onChangeText={setNewComment}
-                multiline
-              />
-              <TouchableOpacity
-                className={`bg-healthcare-primary rounded-full p-3.5 ${(!newComment.trim() || submitLoading) ? 'opacity-50' : ''}`}
-                onPress={handleSubmitComment}
-                disabled={!newComment.trim() || submitLoading}
-              >
-                {submitLoading ? <ActivityIndicator size="small" color="#fff" /> : <Send size={18} color="#fff" />}
-              </TouchableOpacity>
-            </View>
-            <View className="flex-row items-center mt-2">
-              <Switch 
-                value={isAnonymous} 
-                onValueChange={setIsAnonymous} 
-                trackColor={{ false: "#d1d5db", true: "#F8BBD9" }} 
-                thumbColor={isAnonymous ? "#ffffff" : "#ffffff"} 
-              />
-              <Text className="ml-2 text-xs text-gray-600">Post as Anonymous</Text>
-            </View>
-          </View>
-        ) : (
-          <View className="px-4 py-3 border-t border-gray-200 bg-white">
-            <Text className="text-center text-gray-500">Please log in to comment</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-  
   // Handle load more posts
   const handleLoadMore = () => {
     if (!loading && hasMorePosts && !refreshing) {
@@ -1165,13 +890,43 @@ export default function ForumScreen() {
     }
   };
 
-  // Handle post creation success
-  const handlePostCreated = () => {
+  // Handle post creation success with optimistic feedback
+  const handlePostCreated = (newPost?: ForumPost) => {
     setShowCreateModal(false);
+    
+    // Show immediate success feedback
+    Alert.alert('Success', 'Your post has been submitted for review!');
+    
+    // If we have the new post data, we can add it to the list with "pending" status
+    if (newPost && accountId) {
+      const optimisticPost: ForumPost = {
+        ...newPost,
+        _id: `temp-post-${Date.now()}`,
+        voteUp: [],
+        voteDown: [],
+        viewCount: 0,
+        answerCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        statusInfo: {
+          isPending: true,
+          isApproved: false,
+          isRejected: false,
+          statusText: 'Pending Review'
+        },
+        status: 'pending'
+      };
+      
+      // Add to the top of the list if user is on "myPosts" tab
+      if (activeTab === 'myPosts') {
+        setForumPosts(prevPosts => [optimisticPost, ...prevPosts]);
+      }
+    }
+    
+    // Still refresh data to ensure consistency
     setCurrentPage(1);
     setHasMorePosts(true);
     fetchForumData(true);
-    Alert.alert('Success', 'Your post has been submitted for review!');
   };
 
   // Effect to refresh data when accountId changes
@@ -1219,79 +974,109 @@ export default function ForumScreen() {
       {/* Content */}
       <View className="flex-1">
         {selectedPostId ? (
-          <PostDetail post={selectedPost} />
+          <PostDetail
+            post={selectedPost}
+            accountId={accountId}
+            comments={comments}
+            loadingComments={loadingComments}
+            fetchComments={fetchComments}
+            formatDate={formatDate}
+            getUserName={getUserName}
+            handlePostVote={handlePostVote}
+            handleCommentVote={handleCommentVote}
+            replyingToComment={replyingToComment}
+            setReplyingToComment={setReplyingToComment}
+            replyContent={replyContent}
+            setReplyContent={setReplyContent}
+            replyIsAnonymous={replyIsAnonymous}
+            setReplyIsAnonymous={setReplyIsAnonymous}
+            handleSubmitReply={handleSubmitReply}
+            expandedComments={expandedComments}
+            setExpandedComments={setExpandedComments}
+            commentReplies={commentReplies}
+            fetchCommentReplies={fetchCommentReplies}
+            loadingReplies={loadingReplies}
+            setSelectedPostId={setSelectedPostId}
+            newComment={newComment}
+            setNewComment={setNewComment}
+            handleSubmitComment={handleSubmitComment}
+          />
         ) : (
-          <>
-            <View className="flex-row justify-end items-center px-4 py-2 bg-white border-b border-gray-100">
-                {/* ... Sort options from your code ... */}
-            </View>
-            <FlatList
-                data={forumPosts}
-                keyExtractor={(item) => getPostId(item)!}
-                renderItem={({ item }) => <PostCard post={item} onPress={() => setSelectedPostId(getPostId(item))} />}
-                contentContainerStyle={{ padding: 16, paddingTop: 8 }}
-                showsVerticalScrollIndicator={false}
-                onRefresh={onRefresh}
-                refreshing={refreshing}
-                onEndReached={handleLoadMore}
-                onEndReachedThreshold={0.5}
-                ListFooterComponent={
-                    loading && !refreshing ? (
-                        <View className="py-6"><ActivityIndicator color="#F8BBD9" size="large" /></View>
-                    ) : !hasMorePosts && forumPosts.length > 0 ? (
-                        <Text className="text-center text-gray-400 py-6">You've reached the end.</Text>
-                    ) : null
-                }
-                ListEmptyComponent={
-                    !loading ? (
-                        <View className="py-10 px-6 items-center">
-                            {activeTab === 'following' && !accountId ? (
-                                <>
-                                    <Text className="text-center text-gray-600 mb-3">Please log in to see posts you've upvoted.</Text>
-                                    <Button title="Explore all posts" variant="outline" onPress={() => handleTabChange('all')} />
-                                </>
-                            ) : activeTab === 'following' && accountId ? (
-                                <>
-                                    <Text className="text-center text-gray-600 mb-3">You haven't upvoted any posts yet.</Text>
-                                    <Button title="Explore popular discussions" variant="outline" onPress={() => handleTabChange('all')} />
-                                </>
-                            ) : activeTab === 'myPosts' && !accountId ? (
-                                <>
-                                    <Text className="text-center text-gray-600 mb-3">Please log in to see your posts.</Text>
-                                    <Button title="Explore all posts" variant="outline" onPress={() => handleTabChange('all')} />
-                                </>
-                            ) : activeTab === 'myPosts' && accountId ? (
-                                <>
-                                    <Text className="text-center text-gray-600 mb-3">You haven't created any posts yet.</Text>
-                                    <Button title="Create your first post" variant="outline" onPress={() => setShowCreateModal(true)} />
-                                </>
-                            ) : (
-                                <Text className="text-center text-gray-600">No posts found.</Text>
-                            )}
-                        </View>
-                    ) : !loading && activeTab === 'myPosts' && !accountId ? (
-                        <View className="py-10 px-6 items-center">
-                            <Text className="text-center text-gray-600 mb-3">Please log in to see your posts.</Text>
-                            <Button title="Explore all posts" variant="outline" onPress={() => handleTabChange('all')} />
-                        </View>
-                    ) : !loading && forumPosts.length === 0 && activeTab === 'following' ? (
-                        <View className="py-10 px-6 items-center">
-                            <Text className="text-center text-gray-600 mb-3">You haven't upvoted any posts yet.</Text>
-                            <Button title="Explore popular posts" variant="outline" onPress={() => handleTabChange('all')} />
-                        </View>
-                    ) : !loading && forumPosts.length === 0 && activeTab === 'myPosts' ? (
-                        <View className="py-10 px-6 items-center">
-                            <Text className="text-center text-gray-600 mb-3">You haven't created any posts yet.</Text>
-                            <Button title="Create your first post" variant="outline" onPress={() => setShowCreateModal(true)} />
-                        </View>
-                    ) : !loading && forumPosts.length === 0 ? (
-                        <View className="py-10 px-6">
+          <FlatList
+            data={forumPosts}
+            keyExtractor={(item) => getPostId(item)!}
+            renderItem={({ item }) => (
+              <PostCard
+                post={item}
+                onPress={() => setSelectedPostId(getPostId(item))}
+                accountId={accountId}
+                handlePostVote={handlePostVote}
+                formatDate={formatDate}
+                getUserName={getUserName}
+              />
+            )}
+            contentContainerStyle={{ padding: 16, paddingTop: 8 }}
+            showsVerticalScrollIndicator={false}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+                loading && !refreshing ? (
+                    <View className="py-6"><ActivityIndicator color="#F8BBD9" size="large" /></View>
+                ) : !hasMorePosts && forumPosts.length > 0 ? (
+                    <Text className="text-center text-gray-400 py-6">You've reached the end.</Text>
+                ) : null
+            }
+            ListEmptyComponent={
+                !loading ? (
+                    <View className="py-10 px-6 items-center">
+                        {activeTab === 'following' && !accountId ? (
+                            <>
+                                <Text className="text-center text-gray-600 mb-3">Please log in to see posts you've upvoted.</Text>
+                                <Button title="Explore all posts" variant="outline" onPress={() => handleTabChange('all')} />
+                            </>
+                        ) : activeTab === 'following' && accountId ? (
+                            <>
+                                <Text className="text-center text-gray-600 mb-3">You haven't upvoted any posts yet.</Text>
+                                <Button title="Explore popular discussions" variant="outline" onPress={() => handleTabChange('all')} />
+                            </>
+                        ) : activeTab === 'myPosts' && !accountId ? (
+                            <>
+                                <Text className="text-center text-gray-600 mb-3">Please log in to see your posts.</Text>
+                                <Button title="Explore all posts" variant="outline" onPress={() => handleTabChange('all')} />
+                            </>
+                        ) : activeTab === 'myPosts' && accountId ? (
+                            <>
+                                <Text className="text-center text-gray-600 mb-3">You haven't created any posts yet.</Text>
+                                <Button title="Create your first post" variant="outline" onPress={() => setShowCreateModal(true)} />
+                            </>
+                        ) : (
                             <Text className="text-center text-gray-600">No posts found.</Text>
-                        </View>
-                    ) : null
-                }
-            />
-          </>
+                        )}
+                    </View>
+                ) : !loading && activeTab === 'myPosts' && !accountId ? (
+                    <View className="py-10 px-6 items-center">
+                        <Text className="text-center text-gray-600 mb-3">Please log in to see your posts.</Text>
+                        <Button title="Explore all posts" variant="outline" onPress={() => handleTabChange('all')} />
+                    </View>
+                ) : !loading && forumPosts.length === 0 && activeTab === 'following' ? (
+                    <View className="py-10 px-6 items-center">
+                        <Text className="text-center text-gray-600 mb-3">You haven't upvoted any posts yet.</Text>
+                        <Button title="Explore popular posts" variant="outline" onPress={() => handleTabChange('all')} />
+                    </View>
+                ) : !loading && forumPosts.length === 0 && activeTab === 'myPosts' ? (
+                    <View className="py-10 px-6 items-center">
+                        <Text className="text-center text-gray-600 mb-3">You haven't created any posts yet.</Text>
+                        <Button title="Create your first post" variant="outline" onPress={() => setShowCreateModal(true)} />
+                    </View>
+                ) : !loading && forumPosts.length === 0 ? (
+                    <View className="py-10 px-6">
+                        <Text className="text-center text-gray-600">No posts found.</Text>
+                    </View>
+                ) : null
+            }
+          />
         )}
       </View>
       

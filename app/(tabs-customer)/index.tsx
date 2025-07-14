@@ -19,7 +19,7 @@ export default function CustomerHomeScreen() {
       title: 'Ask Question',
       icon: MessageCircle,
       color: '#E1F5FE',
-      action: () => router.push('/(tabs-customer)/chat'),
+      action: () => router.push('/(tabs-customer)/forum'),
     },
     {
       title: 'Book Test',
