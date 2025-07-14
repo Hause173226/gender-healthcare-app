@@ -53,7 +53,7 @@ export default function BlogDetailScreen() {
       {/* Back */}
       <TouchableOpacity
         className="absolute top-10 left-5 z-10 bg-white rounded-full shadow p-2"
-        onPress={() => router.back()}
+       onPress={() => router.replace('/(tabs-customer)/blog')}
       >
         <ArrowLeft size={22} color="#111827" />
       </TouchableOpacity>
