@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -20,6 +21,8 @@ import {
   Calendar,
   Clock,
   Target,
+  Trash2,
+  Edit,
 } from "lucide-react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { cycleService, Cycle } from "@/services/cycleService";
@@ -122,33 +125,105 @@ export default function CycleScreen() {
     setOvulationDate(latestOvulationDate);
   };
 
-  const handleLogPeriodStart = async () => {
-    if (!user?._id) return;
+  // Navigate to create cycle
+  const handleCreateCycle = () => {
+    router.push("/create-cycle" as any);
+  };
 
+  // Navigate to update cycle
+  const handleUpdateCycle = (cycleId: string) => {
+    router.push(`/update-cycle?cycleId=${cycleId}` as any);
+  };
+
+  // API: Delete cycle
+  const handleDeleteCycle = async (cycleId: string) => {
+    Alert.alert("Delete Cycle", "Are you sure you want to delete this cycle?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const result = await cycleService.deleteCycle(cycleId);
+
+            if (result) {
+              toast.success("Cycle deleted successfully");
+              loadCycleData();
+            } else {
+              toast.error("Unable to delete cycle");
+            }
+          } catch (error) {
+            toast.error("Unable to delete cycle");
+          }
+        },
+      },
+    ]);
+  };
+
+  // API: Get cycle by ID
+  const handleViewCycle = async (cycleId: string) => {
     try {
-      const today = new Date().toISOString().split("T")[0];
-      const newCycleData = {
-        periodDays: [today],
-        customerId: user._id,
-      };
+      const result = await cycleService.getCycleById(cycleId);
 
-      const result = await cycleService.createCycle(newCycleData);
-
-      if (result && result._id) {
-        toast.success("Period start logged successfully");
-        loadCycleData();
+      if (result) {
+        Alert.alert(
+          "Cycle Details",
+          `Period Days: ${result.periodDays?.length || 0}\n` +
+            `Fertile Window: ${result.fertileWindow?.length || 0}\n` +
+            `Ovulation Date: ${result.ovulationDate || "Not set"}\n` +
+            `Notes: ${result.notes || "No notes"}`
+        );
       } else {
-        toast.error("Unable to log period start");
+        toast.error("Unable to load cycle details");
       }
     } catch (error) {
-      toast.error("Unable to log period start");
+      toast.error("Unable to load cycle details");
+    }
+  };
+
+  // Quick add period day to latest cycle
+  const handleQuickAddPeriodDay = async () => {
+    if (cycles.length === 0) {
+      Alert.alert("No Cycles", "Please create a cycle first", [
+        { text: "Create Cycle", onPress: handleCreateCycle },
+        { text: "Cancel", style: "cancel" },
+      ]);
+      return;
+    }
+
+    const latestCycle = cycles[cycles.length - 1];
+    const today = new Date().toISOString().split("T")[0];
+
+    if (latestCycle.periodDays.includes(today)) {
+      Alert.alert("Already Added", "Today is already marked as a period day");
+      return;
+    }
+
+    try {
+      const updatedPeriodDays = [...latestCycle.periodDays, today];
+      const result = await cycleService.updateCycle(latestCycle._id, {
+        periodDays: updatedPeriodDays,
+      });
+
+      if (result) {
+        toast.success("Period day added successfully");
+        loadCycleData();
+      } else {
+        toast.error("Unable to add period day");
+      }
+    } catch (error) {
+      toast.error("Unable to add period day");
     }
   };
 
   const getCurrentCycleDay = () => {
     if (!periodDates.length) return 0;
 
-    const lastPeriodStart = new Date(periodDates[periodDates.length - 1]);
+    const sortedDates = periodDates.sort();
+    const lastPeriodStart = new Date(sortedDates[sortedDates.length - 1]);
     const today = new Date();
     const diffTime = today.getTime() - lastPeriodStart.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -179,14 +254,6 @@ export default function CycleScreen() {
     return Math.round(totalDays / cycles.length);
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      day: "2-digit",
-      month: "2-digit",
-    });
-  };
-
   const formatFullDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
@@ -196,40 +263,10 @@ export default function CycleScreen() {
     });
   };
 
-  const cycleStats = [
-    {
-      title: "Cycle Length",
-      value:
-        getAverageCycleLength() > 0 ? `${getAverageCycleLength()} days` : "N/A",
-      icon: TrendingUp,
-      color: "#F8BBD9",
-    },
-    {
-      title: "Period Length",
-      value:
-        getAveragePeriodLength() > 0
-          ? `${getAveragePeriodLength()} days`
-          : "N/A",
-      icon: Droplets,
-      color: "#E57373",
-    },
-    {
-      title: "Total Cycles",
-      value: cycles.length.toString(),
-      icon: Heart,
-      color: "#81C784",
-    },
-  ];
-
   const refresh = async () => {
     setRefreshing(true);
     await loadCycleData();
     setRefreshing(false);
-  };
-
-  const handleViewHistory = () => {
-    // Navigate to cycle history - you may need to create this screen
-    router.push("/(tabs-customer)/profile" as any);
   };
 
   if (loading) {
@@ -259,22 +296,12 @@ export default function CycleScreen() {
                   : "Start tracking your cycle"}
               </Text>
             </View>
-            <View className="flex-row gap-2">
-              <TouchableOpacity
-                className="bg-healthcare-primary rounded-full p-3"
-                onPress={() =>
-                  router.push("/(tabs-customer)/create-cycle" as any)
-                }
-              >
-                <Plus size={24} color="white" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="bg-healthcare-secondary rounded-full p-3"
-                onPress={refresh}
-              >
-                <Target size={24} color="white" />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              className="bg-healthcare-secondary rounded-full p-3"
+              onPress={refresh}
+            >
+              <Target size={24} color="white" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -309,17 +336,37 @@ export default function CycleScreen() {
             Your Stats
           </Text>
           <View className="flex-row justify-between">
-            {cycleStats.map((stat, index) => (
-              <Card key={index} className="flex-1 mx-1 items-center py-4">
-                <stat.icon size={24} color={stat.color} />
-                <Text className="text-healthcare-text font-semibold mt-2">
-                  {stat.value}
-                </Text>
-                <Text className="text-healthcare-text/70 text-sm text-center">
-                  {stat.title}
-                </Text>
-              </Card>
-            ))}
+            <Card className="flex-1 mx-1 items-center py-4">
+              <TrendingUp size={24} color="#F8BBD9" />
+              <Text className="text-healthcare-text font-semibold mt-2">
+                {getAverageCycleLength() > 0
+                  ? `${getAverageCycleLength()} days`
+                  : "0"}
+              </Text>
+              <Text className="text-healthcare-text/70 text-sm text-center">
+                Cycle Length
+              </Text>
+            </Card>
+            <Card className="flex-1 mx-1 items-center py-4">
+              <Droplets size={24} color="#E57373" />
+              <Text className="text-healthcare-text font-semibold mt-2">
+                {getAveragePeriodLength() > 0
+                  ? `${getAveragePeriodLength()} days`
+                  : "0"}
+              </Text>
+              <Text className="text-healthcare-text/70 text-sm text-center">
+                Period Length
+              </Text>
+            </Card>
+            <Card className="flex-1 mx-1 items-center py-4">
+              <Heart size={24} color="#81C784" />
+              <Text className="text-healthcare-text font-semibold mt-2">
+                {cycles.length}
+              </Text>
+              <Text className="text-healthcare-text/70 text-sm text-center">
+                Total Cycles
+              </Text>
+            </Card>
           </View>
         </View>
 
@@ -343,39 +390,87 @@ export default function CycleScreen() {
             Quick Actions
           </Text>
           <View className="gap-3">
+            {/* Log New Period */}
             <TouchableOpacity
               className="bg-healthcare-primary p-4 rounded-lg flex-row items-center justify-center"
-              onPress={handleLogPeriodStart}
+              onPress={handleCreateCycle}
             >
-              <Droplets size={20} color="white" />
+              <Plus size={20} color="white" />
               <Text className="text-white font-medium ml-2">
-                Log Period Start
+                Log New Period
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              className="border border-healthcare-primary p-4 rounded-lg flex-row items-center justify-center"
-              onPress={() =>
-                router.push("/(tabs-customer)/create-cycle" as any)
-              }
-            >
-              <Plus size={20} color="#F8BBD9" />
-              <Text className="text-healthcare-primary font-medium ml-2">
-                Create Cycle
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              className="border border-healthcare-primary p-4 rounded-lg flex-row items-center justify-center"
-              onPress={handleViewHistory}
-            >
-              <Calendar size={20} color="#F8BBD9" />
-              <Text className="text-healthcare-primary font-medium ml-2">
-                View History
-              </Text>
-            </TouchableOpacity>
+            {/* Quick Add Period Day */}
+            {cycles.length > 0 && (
+              <TouchableOpacity
+                className="bg-healthcare-secondary p-4 rounded-lg flex-row items-center justify-center"
+                onPress={handleQuickAddPeriodDay}
+              >
+                <Droplets size={20} color="white" />
+                <Text className="text-white font-medium ml-2">
+                  Add Period Day (Today)
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
+
+        {/* Cycles List */}
+        {cycles.length > 0 && (
+          <View className="px-6 mb-6">
+            <Text className="text-lg font-semibold text-healthcare-text mb-4">
+              Recent Cycles
+            </Text>
+            <View className="gap-3">
+              {cycles.map((cycle, index) => (
+                <Card key={cycle._id} className="py-4">
+                  <View className="flex-row items-center">
+                    <View className="w-12 h-12 bg-healthcare-primary/20 rounded-full items-center justify-center mr-4">
+                      <Droplets size={20} color="#F8BBD9" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-healthcare-text font-medium">
+                        Cycle {cycles.length - index}
+                      </Text>
+                      <Text className="text-healthcare-text/60 text-sm">
+                        {cycle.periodDays.length} days period • Started{" "}
+                        {formatFullDate(cycle.periodDays[0])}
+                      </Text>
+                      {cycle.symptoms && cycle.symptoms.length > 0 && (
+                        <Text className="text-healthcare-text/60 text-sm">
+                          Symptoms: {cycle.symptoms.join(", ")}
+                        </Text>
+                      )}
+                    </View>
+                    <View className="flex-row gap-2">
+                      <TouchableOpacity
+                        className="p-2"
+                        onPress={() => handleViewCycle(cycle._id)}
+                      >
+                        <Text className="text-healthcare-primary text-sm">
+                          View
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        className="p-2"
+                        onPress={() => handleUpdateCycle(cycle._id)}
+                      >
+                        <Edit size={16} color="#F8BBD9" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        className="p-2"
+                        onPress={() => handleDeleteCycle(cycle._id)}
+                      >
+                        <Trash2 size={16} color="#E57373" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Card>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* No Data Message */}
         {cycles.length === 0 && (
@@ -391,9 +486,7 @@ export default function CycleScreen() {
               </Text>
               <TouchableOpacity
                 className="bg-healthcare-primary px-6 py-3 rounded-lg flex-row items-center"
-                onPress={() =>
-                  router.push("/(tabs-customer)/create-cycle" as any)
-                }
+                onPress={handleCreateCycle}
               >
                 <Plus size={20} color="white" />
                 <Text className="text-white font-medium ml-2 text-lg">
@@ -403,55 +496,6 @@ export default function CycleScreen() {
             </Card>
           </View>
         )}
-
-        {/* Recent Cycles */}
-        {cycles.length > 0 && (
-          <View className="px-6 mb-6">
-            <Text className="text-lg font-semibold text-healthcare-text mb-4">
-              Recent Cycles
-            </Text>
-            <View className="gap-3">
-              {cycles.slice(0, 3).map((cycle, index) => (
-                <Card key={cycle._id} className="flex-row items-center py-4">
-                  <View className="w-12 h-12 bg-healthcare-primary/20 rounded-full items-center justify-center mr-4">
-                    <Droplets size={20} color="#F8BBD9" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-healthcare-text font-medium">
-                      Cycle {cycles.length - index}
-                    </Text>
-                    <Text className="text-healthcare-text/60 text-sm">
-                      {cycle.periodDays.length} days period • Started{" "}
-                      {formatFullDate(cycle.periodDays[0])}
-                    </Text>
-                  </View>
-                  <TouchableOpacity className="p-2">
-                    <Text className="text-healthcare-primary">View</Text>
-                  </TouchableOpacity>
-                </Card>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Tips */}
-        <View className="px-6 mb-6">
-          <Card className="bg-healthcare-secondary/10">
-            <View className="flex-row items-start">
-              <Target size={24} color="#F8BBD9" className="mt-1" />
-              <View className="flex-1 ml-3">
-                <Text className="text-healthcare-text font-semibold mb-2">
-                  💡 Tracking Tips
-                </Text>
-                <Text className="text-healthcare-text/70 text-sm">
-                  {cycles.length === 0
-                    ? "Start by logging your period start date. After a few cycles, you'll get accurate predictions!"
-                    : "Keep logging consistently for better predictions. Note any symptoms or changes you experience."}
-                </Text>
-              </View>
-            </View>
-          </Card>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
