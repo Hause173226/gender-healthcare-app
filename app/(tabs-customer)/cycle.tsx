@@ -23,9 +23,12 @@ import {
   Target,
   Trash2,
   Edit,
+  Bell,
+  ArrowRight,
 } from "lucide-react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { cycleService, Cycle } from "@/services/cycleService";
+import { reminderService } from "@/services/reminderService";
 import { useToast } from "@/hooks/useToast";
 
 export default function CycleScreen() {
@@ -35,6 +38,7 @@ export default function CycleScreen() {
 
   const [selectedDate, setSelectedDate] = useState<string>();
   const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [reminders, setReminders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -57,8 +61,14 @@ export default function CycleScreen() {
 
     try {
       setLoading(true);
-      const cyclesData = await cycleService.getCyclesByCustomer(user._id);
 
+      // Load cycles and reminders
+      const [cyclesData, remindersData] = await Promise.all([
+        cycleService.getCyclesByCustomer(user._id),
+        reminderService.getRemindersByCustomer(user._id),
+      ]);
+
+      // Process cycles data
       if (cyclesData && cyclesData.success && cyclesData.data) {
         setCycles(cyclesData.data);
         processCycleData(cyclesData.data);
@@ -78,12 +88,20 @@ export default function CycleScreen() {
         setFertilityDates([]);
         setOvulationDate("");
       }
+
+      // Process reminders data
+      if (remindersData && Array.isArray(remindersData)) {
+        setReminders(remindersData);
+      } else {
+        setReminders([]);
+      }
     } catch (error: any) {
       if (error.response?.status === 404) {
         setCycles([]);
         setPeriodDates([]);
         setFertilityDates([]);
         setOvulationDate("");
+        setReminders([]);
       } else {
         toast.error("Unable to load cycle data");
       }
@@ -133,6 +151,11 @@ export default function CycleScreen() {
   // Navigate to update cycle
   const handleUpdateCycle = (cycleId: string) => {
     router.push(`/update-cycle?cycleId=${cycleId}` as any);
+  };
+
+  // Navigate to reminders
+  const handleViewReminders = () => {
+    router.push("/(tabs-customer)/reminders" as any);
   };
 
   // API: Delete cycle
@@ -254,6 +277,14 @@ export default function CycleScreen() {
     return Math.round(totalDays / cycles.length);
   };
 
+  const getUpcomingReminders = () => {
+    const now = new Date();
+    return reminders
+      .filter((r) => new Date(r.date) > now && !r.isSent)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 3);
+  };
+
   const formatFullDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
@@ -261,6 +292,37 @@ export default function CycleScreen() {
       day: "numeric",
       month: "short",
     });
+  };
+
+  const formatReminderDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return "Today";
+    } else if (date.toDateString() === tomorrow.toDateString()) {
+      return "Tomorrow";
+    } else {
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+    }
+  };
+
+  const getReminderIcon = (type: string) => {
+    switch (type) {
+      case "Pill":
+        return "💊";
+      case "Period":
+        return "🩸";
+      case "Ovulation":
+        return "🥚";
+      default:
+        return "⏰";
+    }
   };
 
   const refresh = async () => {
@@ -304,6 +366,47 @@ export default function CycleScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Upcoming Reminders */}
+        {getUpcomingReminders().length > 0 && (
+          <View className="px-6 mb-6">
+            <View className="flex-row items-center justify-between mb-4">
+              <Text className="text-lg font-semibold text-healthcare-text">
+                Upcoming Reminders
+              </Text>
+              <TouchableOpacity onPress={handleViewReminders}>
+                <Text className="text-healthcare-primary font-medium">
+                  View All
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Card className="bg-gradient-to-r from-healthcare-primary/5 to-healthcare-secondary/5">
+              {getUpcomingReminders().map((reminder, index) => (
+                <View
+                  key={reminder._id}
+                  className={`flex-row items-center ${
+                    index > 0 ? "mt-3 pt-3 border-t border-gray-200" : ""
+                  }`}
+                >
+                  <View className="w-8 h-8 bg-healthcare-primary/20 rounded-full items-center justify-center mr-3">
+                    <Text className="text-sm">
+                      {getReminderIcon(reminder.type)}
+                    </Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-healthcare-text font-medium">
+                      {reminder.type}
+                    </Text>
+                    <Text className="text-healthcare-text/60 text-sm">
+                      {formatReminderDate(reminder.date)}
+                    </Text>
+                  </View>
+                  <Bell size={16} color="#F8BBD9" />
+                </View>
+              ))}
+            </Card>
+          </View>
+        )}
 
         {/* Current Status */}
         {cycles.length > 0 && (
@@ -413,6 +516,17 @@ export default function CycleScreen() {
                 </Text>
               </TouchableOpacity>
             )}
+
+            {/* View Reminders */}
+            <TouchableOpacity
+              className="bg-blue-500 p-4 rounded-lg flex-row items-center justify-center"
+              onPress={handleViewReminders}
+            >
+              <Bell size={20} color="white" />
+              <Text className="text-white font-medium ml-2">
+                View All Reminders
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
