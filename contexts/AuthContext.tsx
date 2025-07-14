@@ -54,6 +54,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         await AsyncStorage.setItem("user", JSON.stringify(response.user));
 
         setUser(response.user);
+        console.log("🧑‍💼 Logged in user role:", response.user.role);
+
         Toast.show({
           type: "success",
           text1: `Welcome ${response.user.name}!`,

@@ -1,142 +1,139 @@
-import React, { useState } from 'react';
-import { View, Text, SafeAreaView, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, Image, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
+import { ArrowLeft, Calendar, Star } from 'lucide-react-native';
+import { useAuth } from '@/contexts/AuthContext';
+import { consultationBookingService, ConsultationBookingPopulated, BookingStatus } from '@/services/consultationBookingService';
+import { counselorService, Counselor } from '@/services/counselorService';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { ArrowLeft, MessageCircle, Video, MapPin, Calendar, Clock, Star, Download } from 'lucide-react-native';
+import dayjs from 'dayjs';
+import { useFocusEffect } from '@react-navigation/native';
 
 export default function ConsultationHistoryScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'all' | 'completed' | 'upcoming'>('all');
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'all' | 'completed' | 'confirmed'>('all');
+  const [bookings, setBookings] = useState<ConsultationBookingPopulated[]>([]);
+  const [counselors, setCounselors] = useState<Counselor[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const consultations = [
-    {
-      id: 1,
-      doctorName: 'Dr. Sarah Wilson',
-      specialty: 'Reproductive Health',
-      date: '2024-12-20',
-      time: '2:00 PM',
-      type: 'online',
-      status: 'completed',
-      rating: 5,
-      notes: 'Discussed menstrual cycle irregularities. Recommended lifestyle changes.',
-      prescription: 'Iron supplements, Vitamin D',
-      followUp: '2025-01-20',
-    },
-    {
-      id: 2,
-      doctorName: 'Dr. Emma Johnson',
-      specialty: 'Sexual Health',
-      date: '2024-12-22',
-      time: '10:30 AM',
-      type: 'in-person',
-      status: 'upcoming',
-      rating: null,
-      notes: null,
-      prescription: null,
-      followUp: null,
-    },
-    {
-      id: 3,
-      doctorName: 'Dr. Michael Chen',
-      specialty: 'General Health',
-      date: '2024-12-15',
-      time: '3:00 PM',
-      type: 'online',
-      status: 'completed',
-      rating: 4,
-      notes: 'General health checkup. All vitals normal.',
-      prescription: 'Multivitamins',
-      followUp: '2025-03-15',
-    },
-  ];
+  useFocusEffect(
+    React.useCallback(() => {
+      const fetch = async () => {
+        if (!user?._id) return;
+        const [bookingData, counselorData] = await Promise.all([
+          consultationBookingService.getBookingsByCustomer(user._id),
+          counselorService.getAll()
+        ]);
+        setBookings(bookingData);
+        setCounselors(counselorData);
+        setSearchQuery('');
+        setActiveTab('all');
+      };
+      fetch();
+    }, [user?._id])
+  );
 
-  const filteredConsultations = consultations.filter(consultation => {
-    if (activeTab === 'all') return true;
-    return consultation.status === activeTab;
-  });
+  // 1. Filter by search
+ const filteredBySearch = bookings.filter((b) => {
+  const name = b.scheduleId?.counselorId?.accountId?.name?.toLowerCase() || '';
+  return name.includes(searchQuery.trim().toLowerCase());
+});
+;
 
-  const renderStars = (rating: number) => {
-    return Array.from({ length: 5 }, (_, index) => (
-      <Star
-        key={index}
-        size={14}
-        color="#FFB74D"
-        fill={index < rating ? "#FFB74D" : "transparent"}
-      />
-    ));
+  // 2. Count filtered by search for each status
+  const filteredCountByStatus = {
+    all: filteredBySearch.length,
+    completed: filteredBySearch.filter(b => b.status === 'completed').length,
+    confirmed: filteredBySearch.filter(b => b.status === 'confirmed').length,
   };
 
-  const getStatusColor = (status: string) => {
+  // 3. Apply tab filter
+  const filteredConsultations = filteredBySearch.filter((b) =>
+    activeTab === 'all' ? true : b.status === activeTab
+  );
+
+  const renderStars = (rating?: number) => {
+    if (!rating) return null;
+    return (
+      <View className="flex-row">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Star
+            key={i}
+            size={14}
+            color="#FFB74D"
+            fill={i < rating ? '#FFB74D' : 'none'}
+            stroke="#FFB74D"
+          />
+        ))}
+      </View>
+    );
+  };
+
+  const getStatusColor = (status: BookingStatus) => {
     switch (status) {
-      case 'completed': return 'bg-healthcare-success/20 text-healthcare-success';
-      case 'upcoming': return 'bg-healthcare-warning/20 text-healthcare-warning';
+      case 'completed': return 'bg-green-100 text-green-700';
+      case 'confirmed': return 'bg-yellow-100 text-yellow-700';
+      case 'cancelled': return 'bg-red-100 text-red-700';
+      case 'missed': return 'bg-gray-100 text-gray-700';
+      case 'pending': return 'bg-gray-200 text-gray-500';
       default: return 'bg-gray-200 text-gray-600';
     }
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-healthcare-light">
+    <SafeAreaView className="flex-1 bg-white">
       <View className="flex-1">
         {/* Header */}
         <View className="px-6 pt-6 pb-4">
           <View className="flex-row items-center mb-4">
-            <TouchableOpacity 
-              onPress={() => router.back()}
-              className="mr-4"
-            >
+            <TouchableOpacity onPress={() => router.back()} className="mr-4">
               <ArrowLeft size={24} color="#2C3E50" />
             </TouchableOpacity>
-            <Text className="text-2xl font-bold text-healthcare-text">
-              Consultation History
-            </Text>
+            <Text className="text-2xl font-bold text-gray-800">Consultation History</Text>
           </View>
         </View>
 
         {/* Stats */}
         <View className="px-6 mb-6">
           <View className="flex-row gap-3">
-            <Card className="flex-1 items-center py-3">
-              <Text className="text-lg font-bold text-healthcare-text">
-                {consultations.filter(c => c.status === 'completed').length}
+            <Card className="flex-1 items-center py-3 rounded-xl shadow-sm border">
+              <Text className="text-lg font-bold text-green-600">
+                {bookings.filter(b => b.status === 'completed').length}
               </Text>
-              <Text className="text-healthcare-text/70 text-sm">Completed</Text>
+              <Text className="text-sm text-gray-600">Success</Text>
             </Card>
-            <Card className="flex-1 items-center py-3">
-              <Text className="text-lg font-bold text-healthcare-text">
-                {consultations.filter(c => c.status === 'upcoming').length}
+
+            <Card className="flex-1 items-center py-3 rounded-xl shadow-sm border">
+              <Text className="text-lg font-bold text-red-500">
+                {bookings.filter((b) => b.status === 'missed' || b.status === 'cancelled').length}
               </Text>
-              <Text className="text-healthcare-text/70 text-sm">Upcoming</Text>
+              <Text className="text-sm text-gray-600">Unsuccess</Text>
             </Card>
-            <Card className="flex-1 items-center py-3">
-              <Text className="text-lg font-bold text-healthcare-text">4.5</Text>
-              <Text className="text-healthcare-text/70 text-sm">Avg Rating</Text>
+
+            <Card className="flex-1 items-center py-3 rounded-xl shadow-sm border">
+              <Text className="text-lg font-bold text-blue-500">
+                {bookings.filter(b => b.status === 'confirmed').length}
+              </Text>
+              <Text className="text-sm text-gray-600">Upcoming</Text>
             </Card>
           </View>
         </View>
 
         {/* Filter Tabs */}
-        <View className="px-6 mb-6">
+        <View className="px-6 mb-4">
           <View className="flex-row bg-gray-100 rounded-lg p-1">
             {[
-              { key: 'all', label: 'All' },
-              { key: 'completed', label: 'Completed' },
-              { key: 'upcoming', label: 'Upcoming' },
+              { key: 'all', label: `All (${filteredCountByStatus.all})` },
+              { key: 'completed', label: `Completed (${filteredCountByStatus.completed})` },
+              { key: 'confirmed', label: `Upcoming (${filteredCountByStatus.confirmed})` },
             ].map((tab) => (
               <TouchableOpacity
                 key={tab.key}
-                className={`flex-1 py-2 rounded-md ${
-                  activeTab === tab.key 
-                    ? 'bg-white shadow-sm' 
-                    : ''
-                }`}
+                className={`flex-1 py-2 rounded-lg ${activeTab === tab.key ? 'bg-white shadow-sm' : ''}`}
                 onPress={() => setActiveTab(tab.key as any)}
               >
-                <Text className={`text-center font-medium ${
-                  activeTab === tab.key 
-                    ? 'text-healthcare-primary' 
-                    : 'text-healthcare-text/60'
-                }`}>
+                <Text className={`text-center font-medium ${activeTab === tab.key ? 'text-pink-600' : 'text-gray-500'}`}>
                   {tab.label}
                 </Text>
               </TouchableOpacity>
@@ -144,106 +141,111 @@ export default function ConsultationHistoryScreen() {
           </View>
         </View>
 
+        {/* Search bar */}
+        <View className="px-6 mb-3">
+          <View className="bg-gray-100 rounded-xl px-4 py-2">
+            <TextInput
+              placeholder="Search by counselor name..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              className="text-base text-gray-800"
+            />
+          </View>
+          {filteredConsultations.length > 0 && (
+            <Text className="text-sm text-gray-500 mt-1">
+              {filteredConsultations.length} result{filteredConsultations.length !== 1 ? 's' : ''}
+            </Text>
+          )}
+        </View>
+
         {/* Consultation List */}
         <ScrollView className="flex-1 px-6">
-          {filteredConsultations.map((consultation) => (
-            <Card key={consultation.id} className="mb-4">
-              <View className="flex-row items-center justify-between mb-3">
-                <View className="flex-row items-center">
-                  <View className="w-12 h-12 bg-healthcare-accent rounded-full items-center justify-center">
-                    <Text className="text-white font-semibold">
-                      {consultation.doctorName.split(' ').map(n => n[0]).join('')}
-                    </Text>
-                  </View>
-                  <View className="ml-3">
-                    <Text className="text-healthcare-text font-semibold">
-                      {consultation.doctorName}
-                    </Text>
-                    <Text className="text-healthcare-text/60 text-sm">
-                      {consultation.specialty}
-                    </Text>
-                  </View>
-                </View>
-                
-                <View className={`px-2 py-1 rounded-full ${getStatusColor(consultation.status)}`}>
-                  <Text className="text-xs font-medium capitalize">
-                    {consultation.status}
-                  </Text>
-                </View>
-              </View>
+          {filteredConsultations.length === 0 ? (
+            <Text className="text-center text-gray-400 mt-10">No consultation found.</Text>
+          ) : (
+            <>
+              {filteredConsultations
+                .sort((a, b) => new Date(b.bookingDate).getTime() - new Date(a.bookingDate).getTime())
+                .map((b) => {
+                  const counselorId = b.scheduleId?.counselorId?._id;
+                  const counselor = counselors.find(c => c._id === counselorId);
+                  const account = counselor?.accountId;
+                  const start = dayjs(b.scheduleId?.startTime).format('HH:mm');
+                  const end = dayjs(b.scheduleId?.endTime).format('HH:mm');
+                  const date = dayjs(b.bookingDate).format('DD/MM/YYYY');
 
-              {/* Date and Type */}
-              <View className="flex-row items-center justify-between mb-3">
-                <View className="flex-row items-center">
-                  <Calendar size={16} color="#F8BBD9" />
-                  <Text className="text-healthcare-text ml-2">
-                    {consultation.date} at {consultation.time}
-                  </Text>
-                </View>
-                <View className="flex-row items-center">
-                  {consultation.type === 'online' ? (
-                    <Video size={16} color="#B2DFDB" />
-                  ) : (
-                    <MapPin size={16} color="#B2DFDB" />
-                  )}
-                  <Text className="text-healthcare-accent ml-1 text-sm capitalize">
-                    {consultation.type}
-                  </Text>
-                </View>
-              </View>
+                  return (
+                    <TouchableOpacity
+                      key={b._id}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/(tabs-customer)/booking-detail',
+                          params: { bookingId: b._id },
+                        })
+                      }
+                      className="mb-4"
+                    >
+                      <Card className="rounded-2xl p-4 border shadow-sm bg-white">
+                        <View className="flex-row items-center justify-between mb-3">
+                          <View className="flex-row items-center">
+                            {account?.image ? (
+                              <Image source={{ uri: account.image }} className="w-12 h-12 rounded-full" />
+                            ) : (
+                              <View className="w-12 h-12 bg-pink-300 rounded-full items-center justify-center">
+                                <Text className="text-white font-semibold">
+                                  {account?.name?.split(' ').map((n) => n[0]).join('')}
+                                </Text>
+                              </View>
+                            )}
+                            <View className="ml-3">
+                              <Text className="text-pink-700 font-semibold">{account?.name || '---'}</Text>
+                              <Text className="text-gray-500 text-sm">{account?.gender || '---'}</Text>
+                            </View>
+                          </View>
+                          <View className={`px-3 py-1 rounded-full ${getStatusColor(b.status)}`}>
+                            <Text className="text-xs font-medium capitalize">{b.status}</Text>
+                          </View>
+                        </View>
 
-              {/* Rating (for completed consultations) */}
-              {consultation.status === 'completed' && consultation.rating && (
-                <View className="flex-row items-center mb-3">
-                  <Text className="text-healthcare-text text-sm mr-2">Your rating:</Text>
-                  <View className="flex-row">
-                    {renderStars(consultation.rating)}
-                  </View>
-                </View>
-              )}
+                        <View className="flex-row items-center mb-3">
+                          <Calendar size={16} color="#EC4899" />
+                          <Text className="text-gray-800 ml-2 text-sm">
+                            {date} at {start} - {end}
+                          </Text>
+                        </View>
 
-              {/* Notes and Prescription (for completed consultations) */}
-              {consultation.status === 'completed' && (
-                <View className="mb-3">
-                  {consultation.notes && (
-                    <View className="mb-2">
-                      <Text className="text-healthcare-text font-medium text-sm">Notes:</Text>
-                      <Text className="text-healthcare-text/70 text-sm">{consultation.notes}</Text>
-                    </View>
-                  )}
-                  {consultation.prescription && (
-                    <View className="mb-2">
-                      <Text className="text-healthcare-text font-medium text-sm">Prescription:</Text>
-                      <Text className="text-healthcare-text/70 text-sm">{consultation.prescription}</Text>
-                    </View>
-                  )}
-                  {consultation.followUp && (
-                    <View>
-                      <Text className="text-healthcare-text font-medium text-sm">Follow-up:</Text>
-                      <Text className="text-healthcare-text/70 text-sm">{consultation.followUp}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
+                        {b.status === 'completed' && b.rating && (
+                          <View className="flex-row items-center mb-3">
+                            <Text className="text-gray-700 text-sm mr-2">Your rating:</Text>
+                            {renderStars(b.rating)}
+                          </View>
+                        )}
 
-              {/* Action Buttons */}
-              <View className="flex-row gap-2">
-                {consultation.status === 'upcoming' ? (
-                  <View className="flex-row gap-2 flex-1">
-                    <Button title="Join Call" size="small" className="flex-1" />
-                    <Button title="Reschedule" variant="outline" size="small" className="flex-1" />
-                  </View>
-                ) : (
-                  <View className="flex-row gap-2 flex-1">
-                    <Button title="Book Again" size="small" className="flex-1" />
-                    <TouchableOpacity className="bg-healthcare-secondary/30 rounded-lg px-3 py-2 flex-row items-center">
-                      <Download size={16} color="#F8BBD9" />
+                        {b.status === 'completed' && (
+                          <View>
+                            {b.feedback && (
+                              <View className="mb-2">
+                                <Text className="text-gray-700 font-semibold text-sm">Feedback:</Text>
+                                <Text className="text-gray-600 text-sm">{b.feedback}</Text>
+                              </View>
+                            )}
+                            {b.result && (
+                              <View className="mb-2">
+                                <Text className="text-gray-700 font-semibold text-sm">Result:</Text>
+                                <Text className="text-gray-600 text-sm">{b.result}</Text>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </Card>
                     </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            </Card>
-          ))}
+                  );
+                })}
+              <Text className="text-center text-gray-400 text-sm mt-6 mb-10">
+                You have reached the end of the list
+              </Text>
+            </>
+          )}
         </ScrollView>
       </View>
     </SafeAreaView>

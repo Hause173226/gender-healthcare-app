@@ -25,7 +25,7 @@ export default function CustomerHomeScreen() {
       title: 'Book Test',
       icon: FlaskConical,
       color: '#B2DFDB',
-      action: () => router.push('/(tabs-customer)/tests'),
+      action: () => router.push('/(tabs-customer)/consultations'),
     },
     {
       title: 'Health Tips',
@@ -33,6 +33,8 @@ export default function CustomerHomeScreen() {
       color: '#81C784',
       action: () => {
         // Navigate to a health tips section or external resource
+       router.push('/(tabs-customer)/blog'),
+
         console.log('Health Tips clicked');
       },
     },
